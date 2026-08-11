@@ -16,7 +16,7 @@ const Schema = z.object({
   ZAP_API_URL: optionalUrl,
   ZAP_API_KEY: z.string().optional(),
   CRUX_API_KEY: z.string().optional(),
-  AI_PROVIDER: z.enum(['none', 'openai-compatible']).default('none'),
+  AI_PROVIDER: z.enum(['none', 'openai-compatible', 'anthropic-compatible']).default('none'),
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: optionalUrl,
   AI_MODEL: z.string().optional(),
