@@ -1,0 +1,22 @@
+{
+  "name": "@sitechronicle/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@sitechronicle/core": "workspace:*",
+    "cheerio": "1.2.0",
+    "chrome-launcher": "1.2.1",
+    "cron-parser": "5.8.1",
+    "fast-xml-parser": "5.10.1",
+    "lighthouse": "13.4.1",
+    "playwright": "1.62.1",
+    "postgres": "3.4.9",
+    "zod": "4.4.3"
+  }
+}

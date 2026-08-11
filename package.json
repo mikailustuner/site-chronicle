@@ -1,0 +1,34 @@
+{
+  "name": "sitechronicle",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "bun@1.3.12",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter @sitechronicle/api dev",
+    "dev:web": "bun --filter @sitechronicle/web dev",
+    "dev:worker": "bun --filter @sitechronicle/worker dev",
+    "build": "bun run build:core && bun run build:web && bun run build:api && bun run build:worker",
+    "build:core": "bun --filter @sitechronicle/core build",
+    "build:web": "bun --filter @sitechronicle/web build",
+    "build:api": "bun --filter @sitechronicle/api build",
+    "build:worker": "bun --filter @sitechronicle/worker build",
+    "test": "vitest run",
+    "test:ui-smoke": "node tests/ui-smoke.mjs",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/worker/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
+    "migrate": "tsx apps/api/src/migrate.ts",
+    "seed": "tsx apps/api/src/seed.ts",
+    "start": "node apps/api/dist/server.js",
+    "start:worker": "node apps/worker/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
