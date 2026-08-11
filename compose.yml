@@ -30,11 +30,14 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL}
+      TRUST_PRIVATE_HTTP: ${TRUST_PRIVATE_HTTP:-false}
       ALLOW_PRIVATE_TARGETS: "false"
       REQUIRE_DOMAIN_VERIFICATION: ${REQUIRE_DOMAIN_VERIFICATION:-false}
       CHROME_PATH: ${CHROME_PATH:-}
     volumes:
       - artifacts:/data/artifacts
+    ports:
+      - "${SITECHRONICLE_BIND_IP:-0.0.0.0}:${SITECHRONICLE_PORT:-43180}:43180"
     depends_on:
       postgres:
         condition: service_healthy

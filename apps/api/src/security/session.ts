@@ -39,7 +39,7 @@ export function issueSession(reply: FastifyReply): void {
   const signature = sign(encoded);
   reply.setCookie(COOKIE_NAME, `${encoded}.${signature}`, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: config.secureCookies,
     sameSite: 'strict',
     path: '/',
     maxAge: MAX_AGE_SECONDS,

@@ -8,8 +8,8 @@ SiteChronicle opens untrusted public web content in a browser. Treat the worker 
 - Chromium runs as the unprivileged `pwuser` with its sandbox enabled through Playwright's version-pinned seccomp profile.
 - Form submission and active security scans are not implemented; profiles requesting either capability are rejected.
 - Cookies, authorization headers and query secrets must never be supplied in public scan profiles. Evidence export can contain personal data rendered by a target; configure `RETENTION_DAYS` and test deletion/restore procedures accordingly.
-- Keep `.env` readable only by its owner (`chmod 600 .env`). Production startup rejects a non-HTTPS `PUBLIC_BASE_URL`.
+- Keep `.env` readable only by its owner (`chmod 600 .env`). Production rejects non-HTTPS public addresses. `TRUST_PRIVATE_HTTP=true` is an explicit homeserver exception limited to RFC1918/Tailscale IPv4 addresses; use it only on a trusted LAN/tailnet.
 - The ZAP service is optional and internal-only. It has no direct egress in Compose and uses only GET-based passive scanning through the worker's filtered proxy. Do not publish its API port.
-- Production requires a long unique admin password, a random session secret, HTTPS and backups.
+- Production requires a long unique admin password, a random session secret and backups. Prefer HTTPS; private HTTP is intended only for trusted LAN/Tailscale deployments.
 
 Report security issues privately to the system owner. Do not attach captured customer data to public issues.

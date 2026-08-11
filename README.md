@@ -69,6 +69,19 @@ docker compose up -d --build
 
 Open `https://<SITECHRONICLE_HOST>`, sign in, add an origin you are authorized to inspect, select a scan profile and run the first baseline. Use **Compare runs** only after a second completed audit. Keep profiles identical when the delta will drive a decision; the comparison engine displays a warning if the toolchain or profile changed.
 
+### LAN or Tailscale access on port 43180
+
+For a private homeserver without a public TLS hostname, set the server's private IPv4 explicitly:
+
+```dotenv
+PUBLIC_BASE_URL=http://192.168.1.50:43180
+TRUST_PRIVATE_HTTP=true
+SITECHRONICLE_BIND_IP=0.0.0.0
+SITECHRONICLE_PORT=43180
+```
+
+Then run `docker compose up -d --build` and open the configured URL. Production accepts this HTTP exception only for RFC1918 or Tailscale IPv4 addresses; the session and CSRF origin remain pinned to `PUBLIC_BASE_URL`. Reserve the server address in DHCP, or update `PUBLIC_BASE_URL` and recreate `api` if it changes. Use HTTPS when access is possible outside the trusted LAN/tailnet.
+
 To enable the optional passive ZAP service, set `ZAP_API_KEY`, set `ZAP_API_URL=http://zap:8080`, then start with `docker compose --profile security up -d`. SiteChronicle sends only explicit GET requests to already-crawled pages; the ZAP spider and active scanner are never invoked. In Compose, ZAP has no direct egress and reaches targets only through the worker's SSRF-filtered audit proxy.
 
 The worker has outbound audit access but no published port, no Docker socket, no Linux capabilities and only the artifact volume. PostgreSQL and API stay on the internal backend network. ZAP is isolated on a separate control network without direct egress; only Caddy is connected to the public edge network.
