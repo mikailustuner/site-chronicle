@@ -1,0 +1,14 @@
+services:
+  api:
+    environment:
+      ALLOW_PRIVATE_TARGETS: "true"
+  worker:
+    environment:
+      ALLOW_PRIVATE_TARGETS: "true"
+  fixture:
+    image: caddy:2-alpine
+    command: ["caddy", "file-server", "--listen", ":8080", "--root", "/srv"]
+    volumes:
+      - ./tests/fixture:/srv:ro
+    networks: [audit_egress]
+

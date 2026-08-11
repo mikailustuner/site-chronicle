@@ -117,7 +117,7 @@ function Shell({ children, view, go, onLogout }: { children: ReactNode; view: Vi
           <NavButton active={current === 'audits'} icon="pulse" onClick={() => go({ name: 'audits' })}>All audits</NavButton>
           <NavButton active={current === 'rules'} icon="book" onClick={() => go({ name: 'rules' })}>Rule library</NavButton>
         </nav>
-        <div className="side-note"><span className="status-dot" />Passive by default<p>Forms and active attacks remain disabled unless explicitly configured.</p></div>
+        <div className="side-note"><span className="status-dot" />Passive by design<p>Form submission and active-attack profiles are rejected.</p></div>
         <button className="logout" onClick={onLogout}><Icon name="logout" />Sign out</button>
       </aside>
       <main className="workspace">{children}</main>
@@ -153,6 +153,7 @@ function Dashboard({ go }: { go: (view: View) => void }) {
   return (
     <>
       <Header eyebrow="Workspace" title="Evidence, not guesses." subtitle="Browse monitored properties, inspect recent runs and launch repeatable audits." action={<button className="primary" onClick={() => setShowAdd(true)}>+ Add domain</button>} />
+      {!data.workerOnline && <div className="alert danger"><b>No active worker.</b><span>Audits cannot start until a worker heartbeat is detected.</span></div>}
       <div className="metric-grid">
         <Metric label="Domains" value={data.domains.length} icon="domain" />
         <Metric label="Recent audits" value={data.audits.length} icon="pulse" />
@@ -364,7 +365,7 @@ function DomainOverview({ domain, audits, trends, schedules, go }: { domain: Row
 }
 
 function TrendChart({ audits }: { audits: Row[] }) {
-  const runs = audits.slice(-10);
+  const recent = audits.slice(-30);const latest=recent.at(-1);const signature=(audit:Row)=>`${audit.manifest?.profileHash??''}:${JSON.stringify(audit.manifest?.scannerVersions??{})}`;const latestSignature=latest?signature(latest):'';const comparableRuns=recent.filter(audit=>signature(audit)===latestSignature);const runs = comparableRuns.slice(-10);const excluded=recent.length-comparableRuns.length;
   const categories = Array.from(new Set(runs.flatMap((audit) => (audit.scores ?? []).map((score: Row) => score.category)))) as string[];
   if (!runs.length || !categories.length) return <Empty title="No trend data yet" text="Completed audits will appear here as a comparable timeline." />;
   const width = 760;
@@ -373,7 +374,7 @@ function TrendChart({ audits }: { audits: Row[] }) {
   const x = (index: number) => runs.length === 1 ? width / 2 : pad + (index * (width - pad * 2)) / (runs.length - 1);
   const y = (score: number) => pad + ((100 - score) * (height - pad * 2)) / 100;
   return (
-    <div className="trend-wrap">
+    <>{excluded>0&&<div className="alert warn">{excluded} run(s) with a different profile or scanner toolchain were excluded from this trend.</div>}<div className="trend-wrap">
       <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Audit category score history">
         {[0, 25, 50, 75, 100].map((score) => <g key={score}><line x1={pad} y1={y(score)} x2={width - pad} y2={y(score)} /><text x="2" y={y(score) + 4}>{score}</text></g>)}
         {categories.map((category, categoryIndex) => {
@@ -386,7 +387,7 @@ function TrendChart({ audits }: { audits: Row[] }) {
         })}
       </svg>
       <div className="chart-legend">{categories.map((category, index) => <span key={category}><i style={{ background: chartColor(index) }} />{category}</span>)}</div>
-    </div>
+    </div></>
   );
 }
 
@@ -451,7 +452,7 @@ function SchedulePanel({ domainId, profiles, schedules, onChanged }: { domainId:
       </div>
       <div className="preset-row"><span>Quick presets:</span><button onClick={() => setCron('0 3 * * *')}>Daily 03:00</button><button onClick={() => setCron('0 3 * * 1')}>Weekly Monday</button><button onClick={() => setCron('0 3 1 * *')}>Monthly</button></div>
       {error && <div className="alert danger">{error}</div>}
-      {schedules.length ? schedules.map((schedule) => <div className="schedule-row" key={schedule.id}><span className="schedule-glyph"><Icon name="clock" /></span><span><b>{schedule.cron}</b><small>{schedule.profile_name} · {schedule.timezone} · next {formatDate(schedule.next_run_at)}</small></span><span className={`pill ${schedule.enabled ? 'ok' : 'neutral'}`}>{schedule.enabled ? 'Enabled' : 'Paused'}</span><button onClick={async () => { await patch(`/api/schedules/${schedule.id}`, { enabled: !schedule.enabled }); onChanged(); }}>{schedule.enabled ? 'Pause' : 'Enable'}</button><button className="danger-button" onClick={async () => { await api(`/api/schedules/${schedule.id}`, { method: 'DELETE' }); onChanged(); }}>Delete</button></div>) : <Empty title="No schedules yet" text="Add a schedule to keep the evidence timeline current." />}
+      {schedules.length ? schedules.map((schedule) => <div className="schedule-row" key={schedule.id}><span className="schedule-glyph"><Icon name="clock" /></span><span><b>{schedule.cron}</b><small>{schedule.profile_name} · {schedule.timezone} · next {formatDate(schedule.next_run_at)}</small>{schedule.last_error && <small className="danger-text">{schedule.last_error}</small>}</span><span className={`pill ${schedule.enabled ? 'ok' : 'neutral'}`}>{schedule.enabled ? 'Enabled' : 'Paused'}</span><button onClick={async () => { await patch(`/api/schedules/${schedule.id}`, { enabled: !schedule.enabled }); onChanged(); }}>{schedule.enabled ? 'Pause' : 'Enable'}</button><button className="danger-button" onClick={async () => { await api(`/api/schedules/${schedule.id}`, { method: 'DELETE' }); onChanged(); }}>Delete</button></div>) : <Empty title="No schedules yet" text="Add a schedule to keep the evidence timeline current." />}
     </section>
   );
 }
@@ -540,10 +541,11 @@ function AuditDetail({ id, go }: { id: string; go: (view: View) => void }) {
     await post(`/api/audits/${id}/cancel`, {});
     await load();
   };
+  const remove = async () => { if (!window.confirm('Permanently delete this audit and its artifacts?')) return; await api(`/api/audits/${id}`, { method: 'DELETE' }); go({ name: 'audits' }); };
   return (
     <>
       <Breadcrumb items={[{ label: 'All audits', onClick: () => go({ name: 'audits' }) }, { label: audit.domain_name, onClick: () => go({ name: 'domain', id: audit.domain_id }) }, { label: id.slice(-10) }]} />
-      <Header eyebrow={`Audit · ${audit.status}`} title={audit.domain_name} subtitle={`${formatDate(audit.created_at)} · ${id}`} action={<div className="button-row">{['queued', 'running'].includes(audit.status) && <button className="danger-button" onClick={cancel}>Cancel run</button>}<button onClick={() => report('html')} disabled={audit.status !== 'completed'}>HTML report</button><button className="primary" onClick={() => report('pdf')} disabled={audit.status !== 'completed'}>PDF report</button></div>} />
+      <Header eyebrow={`Audit · ${audit.status}`} title={audit.domain_name} subtitle={`${formatDate(audit.created_at)} · ${id}`} action={<div className="button-row">{['queued', 'running'].includes(audit.status) && <button className="danger-button" onClick={cancel}>Cancel run</button>}{!['queued','running'].includes(audit.status) && <button className="danger-button" onClick={remove}>Delete</button>}<button onClick={() => report('html')} disabled={audit.status !== 'completed'}>HTML report</button><button className="primary" onClick={() => report('pdf')} disabled={audit.status !== 'completed'}>PDF report</button></div>} />
       {audit.status === 'failed' && <div className="alert danger"><b>Audit failed.</b><pre>{audit.error}</pre></div>}
       {['queued', 'running'].includes(audit.status) && <Progress status={audit.status} />}
       <div className="score-grid">{scores.length ? scores.map((score) => <Score key={score.category} label={score.category} value={score.score} />) : <div className="score-placeholder">Scores appear when measurements finish.</div>}</div>
@@ -561,10 +563,13 @@ function AuditSummary({ data }: { data: Row }) {
   const counts = (data.findings as Finding[]).reduce<Record<string, number>>((result, finding) => ({ ...result, [finding.severity]: (result[finding.severity] ?? 0) + 1 }), {});
   const templates = (data.pages as Row[]).reduce<Record<string, number>>((result, page) => ({ ...result, [page.template]: (result[page.template] ?? 0) + 1 }), {});
   const manifest = audit.manifest ?? {};
+  const warnings = Array.isArray(audit.summary?.warnings) ? audit.summary.warnings : [];
+  const coverage = audit.summary?.coverage ?? {};
   return (
     <>
+      {warnings.map((warning: string) => <div className="alert warn" key={warning}>{warning}</div>)}
       <div className="summary-grid">
-        <section className="panel"><p className="eyebrow">Run facts</p><h2>Coverage</h2><div className="fact-list"><Fact label="Status" value={audit.status} badge /><Fact label="Trigger" value={audit.trigger ?? 'manual'} /><Fact label="Pages captured" value={data.pages.length} /><Fact label="Evidence objects" value={data.evidence.length} /><Fact label="Duration" value={formatDuration(audit.started_at, audit.completed_at)} /></div></section>
+        <section className="panel"><p className="eyebrow">Run facts</p><h2>Coverage</h2><div className="fact-list"><Fact label="Status" value={audit.status} badge /><Fact label="Trigger" value={audit.trigger ?? 'manual'} /><Fact label="Pages captured" value={data.pages.length} /><Fact label="Browser states" value={coverage.browser ? `${coverage.browser.completed}/${coverage.browser.expected}` : '—'} /><Fact label="Lighthouse profiles" value={coverage.lighthouse ? `${coverage.lighthouse.completed}/${coverage.lighthouse.expected}` : '—'} /><Fact label="Evidence objects" value={data.evidence.length} /><Fact label="Duration" value={formatDuration(audit.started_at, audit.completed_at)} /></div></section>
         <section className="panel"><p className="eyebrow">Finding distribution</p><h2>{data.findings.length} total findings</h2><div className="severity-bars">{['critical', 'high', 'medium', 'low', 'info'].map((severity) => <div key={severity}><span className={`severity ${severity}`}>{severity}</span><i><span className={severity} style={{ width: `${data.findings.length ? ((counts[severity] ?? 0) / data.findings.length) * 100 : 0}%` }} /></i><b>{counts[severity] ?? 0}</b></div>)}</div></section>
       </div>
       <div className="two-column">
@@ -600,7 +605,7 @@ function FindingList({ findings }: { findings: Finding[] }) {
         <label><span>Sort</span><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="severity">Severity</option><option value="confidence">Confidence</option><option value="title">Title A–Z</option></select></label>
       </div>
       <ResultBar count={visible.length} total={findings.length} label="findings" onClear={() => { setQuery(''); setSeverity('all'); setCategory('all'); setConfidence('all'); setOrder('severity'); }} />
-      {visible.length ? <div className="finding-list">{visible.map((finding) => <details className="finding" key={finding.id}><summary><div className="finding-top"><span className={`severity ${finding.severity}`}>{finding.severity}</span><span className="category">{finding.category}</span><span className="confidence">{Math.round(finding.confidence * 100)}% · {finding.confidenceLevel}</span></div><h3>{finding.title}</h3><p>{finding.observation}</p><span className="expand-label">View analysis <Icon name="chevron" /></span></summary><div className="finding-body"><dl><dt>Observed</dt><dd>{finding.observation}</dd><dt>Why it matters</dt><dd>{finding.impactHypothesis}<small>{finding.impactStatus}</small></dd><dt>Probable cause</dt><dd>{finding.probableCause}</dd><dt>Recommended change</dt><dd>{finding.recommendation}</dd><dt>Acceptance</dt><dd><ul>{finding.acceptanceCriteria.map((item) => <li key={item}>{item}</li>)}</ul></dd>{finding.pageUrl && <><dt>Affected page</dt><dd><a href={finding.pageUrl} target="_blank" rel="noreferrer">{finding.pageUrl}</a></dd></>}</dl><footer><code>{finding.ruleId}</code><span>{finding.evidenceIds.length} evidence reference(s)</span></footer></div></details>)}</div> : <Empty title="No matching findings" text="Change or clear the active filters." />}
+      {visible.length ? <div className="finding-list">{visible.map((finding) => { const aiReview=(finding as Finding & {aiReview?:{clarification:string;confidence:number;evidenceIds:string[]}}).aiReview;return <details className="finding" key={finding.id}><summary><div className="finding-top"><span className={`severity ${finding.severity}`}>{finding.severity}</span><span className="category">{finding.category}</span>{finding.measurementContext && <span className="pill neutral">{finding.measurementContext}</span>}<span className="confidence">{Math.round(finding.confidence * 100)}% · {finding.confidenceLevel}</span></div><h3>{finding.title}</h3><p>{finding.observation}</p><span className="expand-label">View analysis <Icon name="chevron" /></span></summary><div className="finding-body"><dl><dt>Observed</dt><dd>{finding.observation}</dd><dt>Why it matters</dt><dd>{finding.impactHypothesis}<small>{finding.impactStatus}</small></dd><dt>Probable cause</dt><dd>{finding.probableCause}</dd><dt>Recommended change</dt><dd>{finding.recommendation}</dd><dt>Acceptance</dt><dd><ul>{finding.acceptanceCriteria.map((item) => <li key={item}>{item}</li>)}</ul></dd>{aiReview&&<><dt>AI evidence review</dt><dd>{aiReview.clarification}<small>Advisory only · {Math.round(aiReview.confidence*100)}% · {aiReview.evidenceIds.length} scoped evidence reference(s)</small></dd></>}{finding.pageUrl && <><dt>Affected page</dt><dd><a href={finding.pageUrl} target="_blank" rel="noreferrer">{finding.pageUrl}</a></dd></>}</dl><footer><code>{finding.ruleId}</code><span>{finding.evidenceIds.length} evidence reference(s)</span></footer></div></details>;})}</div> : <Empty title="No matching findings" text="Change or clear the active filters." />}
     </section>
   );
 }

@@ -221,6 +221,7 @@ td.url small { max-width: 520px; white-space: nowrap; text-overflow: ellipsis; o
 .schedule-row > span:nth-child(2) { flex: 1; }
 .schedule-row b, .schedule-row small { display: block; }
 .schedule-row small { color: var(--muted); margin-top: 3px; }
+.schedule-row .danger-text { color: var(--red); }
 .schedule-glyph { width: 35px; height: 35px; border-radius: 8px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
 
 .progress { background: var(--brand-soft); border: 1px solid #c9ded7; border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 14px; margin: 18px 0; }

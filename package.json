@@ -18,8 +18,9 @@
     "build:worker": "bun --filter @sitechronicle/worker build",
     "test": "vitest run",
     "test:ui-smoke": "node tests/ui-smoke.mjs",
+    "test:e2e": "node tests/e2e.mjs",
     "test:watch": "vitest",
-    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/worker/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
+    "typecheck": "bun run build:core && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/worker/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "migrate": "tsx apps/api/src/migrate.ts",
     "seed": "tsx apps/api/src/seed.ts",
     "start": "node apps/api/dist/server.js",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "24.10.13",
+    "playwright": "1.62.1",
     "tsx": "4.23.12",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ScanProfileSchema, compareAudits, createFinding, hashObject, normalizeUrl, parseHttpUrl, sha256, stableStringify,
+  ScanProfileSchema, compareAudits, createFinding, hashObject, normalizeUrl, parseHttpUrl, sameSite, sha256, stableStringify,
   type AuditManifest, type PageSnapshot,
 } from '../packages/core/src/index.js';
 
@@ -45,6 +45,24 @@ describe('core invariants', () => {
     expect(profile.activeSecurity).toBe(false);
     expect(profile.performanceRuns).toBe(3);
   });
+
+  it('does not widen authorization from a subdomain to parent or sibling hosts', () => {
+    expect(sameSite('https://shop.example.com/a', 'https://shop.example.com/b')).toBe(true);
+    expect(sameSite('https://example.com', 'https://shop.example.com')).toBe(false);
+    expect(sameSite('https://cdn.example.com', 'https://shop.example.com')).toBe(false);
+    expect(sameSite('https://shop.example.com:8443', 'https://shop.example.com')).toBe(false);
+    expect(sameSite('http://shop.example.com', 'https://shop.example.com')).toBe(true);
+  });
+
+  it('rejects profile capabilities that are not safely implemented', () => {
+    expect(() => ScanProfileSchema.parse({ allowForms: true })).toThrow(/Form submission/);
+    expect(() => ScanProfileSchema.parse({ activeSecurity: true })).toThrow(/Active security/);
+  });
+
+  it('keeps findings from separate measurement states distinct', () => {
+    const common = {auditId:'audit',ruleId:'A11Y-1',category:'accessibility' as const,severity:'high' as const,title:'Example',observation:'One node failed',impactHypothesis:'Impact',impactStatus:'research-backed-hypothesis' as const,probableCause:'Cause',recommendation:'Fix',acceptanceCriteria:['Pass'],evidenceIds:['ev'],sourceUrls:[],confidence:1,pageUrl:'https://example.com/'};
+    expect(createFinding({...common,measurementContext:'mobile:fresh-session'}).fingerprint).not.toBe(createFinding({...common,measurementContext:'mobile:popup-closed'}).fingerprint);
+  });
 });
 
 describe('historical comparison', () => {
@@ -72,6 +90,7 @@ describe('historical comparison', () => {
       current: { manifest: manifest('after', profile, '14'), scores: [], findings: [], pages: [] },
     });
     expect(result.warnings.join(' ')).toMatch(/version changed/);
+    expect(result.comparable).toBe(false);
   });
 });
 

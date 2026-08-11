@@ -13,10 +13,10 @@ const ResponseSchema = z.object({
 
 const systemPrompt = 'You are an evidence reviewer. Return JSON {notes:[{findingId,clarification,evidenceIds,confidence}]}. Do not create findings, claim causality, or cite evidence IDs not provided.';
 
-export async function enrichWithAi(findings: Finding[]): Promise<Record<string, { clarification: string; confidence: number }> | null> {
+export async function enrichWithAi(findings: Finding[]): Promise<Record<string, { clarification: string; confidence: number; evidenceIds:string[] }> | null> {
   if (config.aiProvider === 'none' || !config.aiApiKey || !config.aiBaseUrl || !config.aiModel) return null;
 
-  const allowed = new Set(findings.flatMap((item) => item.evidenceIds));
+  const byId = new Map(findings.map((item) => [item.id, item]));
   const payload = findings.slice(0, 100).map((item) => ({
     id: item.id,
     title: item.title,
@@ -59,12 +59,12 @@ export async function enrichWithAi(findings: Finding[]): Promise<Record<string, 
   });
   if (!response.ok) throw new Error(`AI provider ${response.status}`);
 
-  const body = await response.json() as any;
+  const body = await response.json() as {content?:Array<{type?:string;text?:string}>;choices?:Array<{message?:{content?:string}}>};
   const content = anthropic
-    ? body.content?.filter((block: any) => block?.type === 'text').map((block: any) => block.text).join('')
+    ? body.content?.filter((block) => block?.type === 'text').map((block) => block.text).join('')
     : body.choices?.[0]?.message?.content;
   const parsed = ResponseSchema.parse(JSON.parse(String(content ?? '{}')));
   return Object.fromEntries(parsed.notes
-    .filter((note) => note.evidenceIds.every((id) => allowed.has(id)))
-    .map((note) => [note.findingId, { clarification: note.clarification, confidence: note.confidence }]));
+    .filter((note) => {const finding=byId.get(note.findingId);return Boolean(finding)&&note.evidenceIds.every((id) => finding!.evidenceIds.includes(id))})
+    .map((note) => [note.findingId, { clarification: note.clarification, confidence: note.confidence,evidenceIds:note.evidenceIds }]));
 }

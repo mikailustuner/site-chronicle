@@ -15,6 +15,7 @@ const ConfigSchema = z.object({
   REQUIRE_DOMAIN_VERIFICATION: booleanFromEnv,
   WEB_DIST_PATH: z.string().default('../../web/dist'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  CHROME_PATH: z.preprocess((value) => value === '' ? undefined : value, z.string().optional()),
 });
 
 const parsed = ConfigSchema.parse(process.env);
@@ -22,6 +23,7 @@ const parsed = ConfigSchema.parse(process.env);
 if (parsed.NODE_ENV === 'production') {
   if (parsed.ADMIN_PASSWORD === 'development-only-password') throw new Error('ADMIN_PASSWORD must be changed in production');
   if (parsed.SESSION_SECRET === 'development-session-secret-change-me-now') throw new Error('SESSION_SECRET must be changed in production');
+  if (new URL(parsed.PUBLIC_BASE_URL).protocol !== 'https:') throw new Error('PUBLIC_BASE_URL must use HTTPS in production');
 }
 
 export const config = {
@@ -37,4 +39,5 @@ export const config = {
   requireDomainVerification: parsed.REQUIRE_DOMAIN_VERIFICATION,
   webDistPath: parsed.WEB_DIST_PATH,
   logLevel: parsed.LOG_LEVEL,
+  chromePath: parsed.CHROME_PATH,
 };

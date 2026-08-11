@@ -7,7 +7,7 @@ import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
 import { config } from './config.js';
 import { migrate, sql } from './db.js';
-import { clearSession, hasValidSession, issueSession, requireSession, requireTrustedOrigin, verifyPassword } from './security/session.js';
+import { clearLoginAttempts, clearSession, consumeLoginAttempt, hasValidSession, issueSession, requireSession, requireTrustedOrigin, verifyPassword } from './security/session.js';
 import { registerRoutes } from './routes.js';
 
 const app = Fastify({
@@ -39,23 +39,27 @@ app.addHook('onRequest', async (request, reply) => {
 
 app.get('/api/health', async () => {
   await sql`SELECT 1`;
-  return { ok: true, version: '0.1.0', time: new Date().toISOString() };
+  const workers=await sql<Array<{count:number}>>`SELECT count(*)::int AS count FROM worker_heartbeats WHERE last_seen_at > now() - interval '45 seconds'`;
+  return { ok: true, workerOnline:Number(workers[0]?.count??0)>0, version: '0.1.0', time: new Date().toISOString() };
 });
+app.get('/api/readiness',async(_request,reply)=>{await sql`SELECT 1`;const workers=await sql<Array<{count:number}>>`SELECT count(*)::int AS count FROM worker_heartbeats WHERE last_seen_at > now() - interval '45 seconds'`;const ready=Number(workers[0]?.count??0)>0;return reply.code(ready?200:503).send({ready,database:true,worker:ready})});
 
 app.get('/api/session', async (request) => ({ authenticated: hasValidSession(request) }));
 app.post('/api/session', async (request, reply) => {
+  const retryAfter=consumeLoginAttempt(request.ip);if(retryAfter!==null)return reply.header('retry-after',String(retryAfter)).code(429).send({error:'too_many_login_attempts',retryAfter});
   const { password } = z.object({ password: z.string().min(1).max(1024) }).parse(request.body);
   if (!verifyPassword(password)) {
     await new Promise((resolve) => setTimeout(resolve, 350));
     return reply.code(401).send({ error: 'invalid_credentials' });
   }
+  clearLoginAttempts(request.ip);
   issueSession(reply);
   return { authenticated: true };
 });
 app.delete('/api/session', async (_request, reply) => { clearSession(reply); return { authenticated: false }; });
 
 app.addHook('preHandler', async (request, reply) => {
-  if (!request.url.startsWith('/api/') || ['/api/health', '/api/session'].includes(request.url.split('?')[0]!)) return;
+  if (!request.url.startsWith('/api/') || ['/api/health','/api/readiness','/api/session'].includes(request.url.split('?')[0]!)) return;
   await requireSession(request, reply);
 });
 

@@ -11,7 +11,9 @@ export const sql: Database = postgres(config.databaseUrl, {
 });
 
 export async function migrate(database: Database = sql): Promise<void> {
-  await database.unsafe(`
+  await database.begin(async (transaction) => {
+    await transaction`SELECT pg_advisory_xact_lock(731_942_001)`;
+    await transaction.unsafe(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version integer PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
@@ -164,7 +166,52 @@ export async function migrate(database: Database = sql): Promise<void> {
     INSERT INTO schema_migrations (version)
     VALUES (1)
     ON CONFLICT (version) DO NOTHING;
-  `);
+    `);
+    await transaction.unsafe(`
+      ALTER TABLE evidence DROP CONSTRAINT IF EXISTS evidence_audit_id_sha256_kind_key;
+      ALTER TABLE schedules ADD COLUMN IF NOT EXISTS last_error text;
+      ALTER TABLE schedules ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+      CREATE TABLE IF NOT EXISTS worker_heartbeats (
+        worker_id text PRIMARY KEY,
+        started_at timestamptz NOT NULL,
+        last_seen_at timestamptz NOT NULL,
+        concurrency integer NOT NULL,
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      );
+      CREATE INDEX IF NOT EXISTS worker_heartbeats_seen_idx ON worker_heartbeats(last_seen_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS jobs_active_audit_idx
+        ON jobs ((payload->>'auditId'))
+        WHERE type='audit' AND status IN ('queued','running');
+
+      INSERT INTO schema_migrations (version) VALUES (2) ON CONFLICT (version) DO NOTHING;
+    `);
+    await transaction.unsafe(`
+      WITH duplicate_audits AS (
+        SELECT id FROM (
+          SELECT id, row_number() OVER (PARTITION BY domain_id, profile_id ORDER BY created_at, id) AS position
+          FROM audits WHERE status IN ('queued','running') AND profile_id IS NOT NULL
+        ) ranked WHERE position > 1
+      )
+      UPDATE jobs SET status='cancelled', completed_at=now(), locked_by=null, locked_at=null,
+        last_error='Cancelled by migration: duplicate active audit'
+      WHERE status IN ('queued','running') AND payload->>'auditId' IN (SELECT id FROM duplicate_audits);
+
+      WITH duplicate_audits AS (
+        SELECT id FROM (
+          SELECT id, row_number() OVER (PARTITION BY domain_id, profile_id ORDER BY created_at, id) AS position
+          FROM audits WHERE status IN ('queued','running') AND profile_id IS NOT NULL
+        ) ranked WHERE position > 1
+      )
+      UPDATE audits SET status='failed', completed_at=now(), error='Duplicate active audit reconciled during migration'
+      WHERE id IN (SELECT id FROM duplicate_audits);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS audits_active_domain_profile_idx
+        ON audits (domain_id, profile_id)
+        WHERE status IN ('queued','running');
+      INSERT INTO schema_migrations (version) VALUES (3) ON CONFLICT (version) DO NOTHING;
+    `);
+  });
 }
 
 export async function closeDatabase(): Promise<void> {

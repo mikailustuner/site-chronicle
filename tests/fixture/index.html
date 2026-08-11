@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SiteChronicle Fixture Store</title>
+  <meta name="description" content="A controlled audit fixture">
+  <link rel="canonical" href="http://fixture:8080/">
+</head>
+<body>
+  <header><h1>Fixture Store</h1></header>
+  <main>
+    <p>Controlled content for a complete SiteChronicle audit.</p>
+    <a href="/product.html">Fixture product</a>
+    <button style="width:18px;height:18px" aria-label="Tiny target">+</button>
+  </main>
+  <script>fetch('/must-not-be-posted', { method: 'POST', body: 'blocked' }).catch(() => {});</script>
+</body>
+</html>
+

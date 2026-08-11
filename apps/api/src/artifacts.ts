@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { newId, sha256, type EvidenceRef } from '@sitechronicle/core';
 import type { Database } from './db.js';
@@ -23,13 +23,10 @@ export class ArtifactStore {
     const relativePath = path.join(input.auditId, digest.slice(0, 2), `${digest}.${sanitizeExtension(input.extension)}`);
     const absolutePath = this.resolve(relativePath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, bytes, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+    await writeFile(absolutePath, bytes, { flag: 'wx' }).catch(async (error: NodeJS.ErrnoException) => {
       if (error.code !== 'EEXIST') throw error;
+      if(sha256(await readFile(absolutePath))!==digest)throw new Error('Existing content-addressed artifact failed its integrity check');
     });
-    const existing = await this.database<Array<Record<string, unknown>>>`
-      SELECT * FROM evidence WHERE audit_id = ${input.auditId} AND sha256 = ${digest} AND kind = ${input.kind} LIMIT 1
-    `;
-    if (existing[0]) return rowToEvidence(existing[0]);
     const id = newId('evidence');
     const rows = await this.database<Array<Record<string, unknown>>>`
       INSERT INTO evidence (id, audit_id, page_id, kind, sha256, mime_type, relative_path, page_url, selector, metadata)
@@ -41,6 +38,11 @@ export class ArtifactStore {
 
   async read(relativePath: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(this.resolve(relativePath)));
+  }
+
+  async removeAudit(auditId:string):Promise<void>{
+    if(!/^audit_[a-f0-9]{32}$/.test(auditId))throw new Error('Invalid audit artifact identifier');
+    const target=this.resolve(auditId);const stat=await lstat(target).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return null;throw error});if(!stat)return;if(stat.isSymbolicLink()||!stat.isDirectory())throw new Error('Audit artifact target is not a regular directory');await rm(target,{recursive:true,force:false});
   }
 
   resolve(relativePath: string): string {

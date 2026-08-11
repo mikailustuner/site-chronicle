@@ -1,5 +1,24 @@
 import { CronExpressionParser } from 'cron-parser';
-import { newId } from '@sitechronicle/core';
+import { hashObject, newId, ScanProfileSchema, type AuditManifest } from '@sitechronicle/core';
 import type { Database } from './db.js';
+import { config } from './config.js';
 
-export async function processSchedules(database:Database):Promise<number>{return database.begin(async transaction=>{const rows=await transaction<Array<Record<string,unknown>>>`SELECT * FROM schedules WHERE enabled=true AND (next_run_at IS NULL OR next_run_at<=now()) FOR UPDATE SKIP LOCKED LIMIT 20`;for(const row of rows){const audits=await transaction<Array<{id:string;manifest:unknown}>>`SELECT * FROM audits WHERE domain_id=${String(row.domain_id)} ORDER BY created_at DESC LIMIT 1`;const profile=await transaction<Array<{config:unknown}>>`SELECT config FROM scan_profiles WHERE id=${String(row.profile_id)}`;const domain=await transaction<Array<{origin:string}>>`SELECT origin FROM domains WHERE id=${String(row.domain_id)}`;if(!profile[0]||!domain[0])continue;const auditId=newId('audit');const manifest={auditId,domainId:String(row.domain_id),origin:domain[0].origin,startedAt:new Date().toISOString(),scannerVersions:{ruleset:'1.0.0'},profile:profile[0].config,profileHash:'scheduled-worker-will-normalize',workerId:'unassigned',environment:{platform:process.platform,node:process.version}};await transaction`INSERT INTO audits (id,domain_id,profile_id,status,trigger,manifest) VALUES (${auditId},${String(row.domain_id)},${String(row.profile_id)},'queued','schedule',${transaction.json(manifest as never)})`;await transaction`INSERT INTO jobs (id,type,payload,status,priority) VALUES (${newId('job')},'audit',${transaction.json({auditId} as never)},'queued',50)`;let next:Date|null=null;try{next=CronExpressionParser.parse(String(row.cron),{currentDate:new Date(),tz:String(row.timezone)}).next().toDate()}catch{await transaction`UPDATE schedules SET enabled=false WHERE id=${String(row.id)}`;continue}await transaction`UPDATE schedules SET last_run_at=now(),next_run_at=${next} WHERE id=${String(row.id)}`;}return rows.length})}
+export async function processSchedules(database:Database):Promise<number>{
+  return database.begin(async transaction=>{
+    const rows=await transaction<Array<Record<string,unknown>>>`SELECT s.*,d.origin,d.authorization_confirmed,d.verified_at,p.config AS profile_config FROM schedules s JOIN domains d ON d.id=s.domain_id JOIN scan_profiles p ON p.id=s.profile_id WHERE s.enabled=true AND (s.next_run_at IS NULL OR s.next_run_at<=now()) ORDER BY s.next_run_at NULLS FIRST FOR UPDATE OF s SKIP LOCKED LIMIT 20`;
+    let queued=0;
+    for(const row of rows){
+      const parsed=ScanProfileSchema.safeParse(row.profile_config);if(!parsed.success){await transaction`UPDATE schedules SET enabled=false,last_error='invalid_or_unsafe_profile',updated_at=now() WHERE id=${String(row.id)}`;continue}const denial=!row.authorization_confirmed?'authorization_confirmation_required':config.requireDomainVerification&&!row.verified_at?'domain_verification_required':null;
+      if(denial){await transaction`UPDATE schedules SET enabled=false,last_error=${denial},updated_at=now() WHERE id=${String(row.id)}`;continue}
+      let next:Date;try{next=CronExpressionParser.parse(String(row.cron),{currentDate:new Date(),tz:String(row.timezone)}).next().toDate()}catch{await transaction`UPDATE schedules SET enabled=false,last_error='invalid_cron_or_timezone',updated_at=now() WHERE id=${String(row.id)}`;continue}
+      const active=await transaction<Array<{id:string}>>`SELECT id FROM audits WHERE domain_id=${String(row.domain_id)} AND profile_id=${String(row.profile_id)} AND status IN ('queued','running') LIMIT 1`;
+      if(active[0]){await transaction`UPDATE schedules SET next_run_at=${next},last_error='previous_audit_still_active',updated_at=now() WHERE id=${String(row.id)}`;continue}
+      const auditId=newId('audit');const profile=parsed.data;const manifest:AuditManifest={auditId,domainId:String(row.domain_id),origin:String(row.origin),startedAt:new Date().toISOString(),scannerVersions:{ruleset:'1.0.0'},profile,profileHash:hashObject(profile),workerId:'unassigned',environment:{platform:process.platform,node:process.version}};
+      const inserted=await transaction<Array<{id:string}>>`INSERT INTO audits (id,domain_id,profile_id,status,trigger,manifest) VALUES (${auditId},${String(row.domain_id)},${String(row.profile_id)},'queued','schedule',${transaction.json(manifest as never)}) ON CONFLICT (domain_id,profile_id) WHERE status IN ('queued','running') DO NOTHING RETURNING id`;
+      if(!inserted[0]){await transaction`UPDATE schedules SET next_run_at=${next},last_error='previous_audit_still_active',updated_at=now() WHERE id=${String(row.id)}`;continue}
+      await transaction`INSERT INTO jobs (id,type,payload,status,priority) VALUES (${newId('job')},'audit',${transaction.json({auditId} as never)},'queued',50)`;
+      await transaction`UPDATE schedules SET last_run_at=now(),next_run_at=${next},last_error=null,updated_at=now() WHERE id=${String(row.id)}`;queued+=1;
+    }
+    return queued;
+  });
+}

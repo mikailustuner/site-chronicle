@@ -33,6 +33,9 @@ export const ScanProfileSchema = z.object({
   locale: z.string().default('tr-TR'),
   timezone: z.string().default('Europe/Istanbul'),
   waitAfterLoadMs: z.number().int().min(0).max(30_000).default(3_000),
+}).superRefine((profile, context) => {
+  if (profile.allowForms) context.addIssue({ code: 'custom', path: ['allowForms'], message: 'Form submission is not implemented and must remain disabled' });
+  if (profile.activeSecurity) context.addIssue({ code: 'custom', path: ['activeSecurity'], message: 'Active security scanning is not implemented and must remain disabled' });
 });
 
 export type ScanProfile = z.infer<typeof ScanProfileSchema>;
@@ -89,6 +92,7 @@ export interface Finding {
   fingerprint: string;
   numericValue?: number;
   numericUnit?: string;
+  measurementContext?: string;
   createdAt: string;
 }
 

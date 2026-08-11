@@ -32,6 +32,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL}
       ALLOW_PRIVATE_TARGETS: "false"
       REQUIRE_DOMAIN_VERIFICATION: ${REQUIRE_DOMAIN_VERIFICATION:-false}
+      CHROME_PATH: ${CHROME_PATH:-}
     volumes:
       - artifacts:/data/artifacts
     depends_on:
@@ -61,6 +62,12 @@ services:
       WORKER_ID: worker-1
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
       ALLOW_PRIVATE_TARGETS: "false"
+      REQUIRE_DOMAIN_VERIFICATION: ${REQUIRE_DOMAIN_VERIFICATION:-false}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      AUDIT_PROXY_BIND_HOST: 0.0.0.0
+      AUDIT_PROXY_PORT: 43182
+      AUDIT_PROXY_ADVERTISE_HOST: worker
+      CHROME_PATH: ${CHROME_PATH:-}
       CRUX_API_KEY: ${CRUX_API_KEY:-}
       ZAP_API_URL: ${ZAP_API_URL:-}
       ZAP_API_KEY: ${ZAP_API_KEY:-}
@@ -77,8 +84,10 @@ services:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
+      - seccomp:./deploy/playwright-seccomp.json
+      - apparmor:unconfined
     cap_drop: [ALL]
-    networks: [backend, audit_egress]
+    networks: [backend, scanner_control, audit_egress]
 
   caddy:
     image: caddy:2-alpine
@@ -107,7 +116,7 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    networks: [backend, audit_egress]
+    networks: [scanner_control]
 
 volumes:
   postgres_data:
@@ -117,6 +126,8 @@ volumes:
 
 networks:
   backend:
+    internal: true
+  scanner_control:
     internal: true
   edge:
   audit_egress:

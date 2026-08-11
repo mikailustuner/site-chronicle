@@ -4,6 +4,9 @@ import { config } from '../config.js';
 
 const COOKIE_NAME = 'sitechronicle_session';
 const MAX_AGE_SECONDS = 12 * 60 * 60;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_ATTEMPT_LIMIT = 5;
+const loginAttempts = new Map<string, number[]>();
 
 interface SessionPayload {
   sub: 'admin';
@@ -17,6 +20,14 @@ export function verifyPassword(candidate: string): boolean {
   const actual = scryptSync(candidate, salt, 32);
   return timingSafeEqual(expected, actual);
 }
+
+export function consumeLoginAttempt(key:string):number|null{
+  const now=Date.now();const recent=(loginAttempts.get(key)??[]).filter(value=>now-value<LOGIN_WINDOW_MS);
+  if(recent.length>=LOGIN_ATTEMPT_LIMIT){loginAttempts.set(key,recent);return Math.max(1,Math.ceil((LOGIN_WINDOW_MS-(now-recent[0]!))/1000))}
+  recent.push(now);loginAttempts.set(key,recent);return null;
+}
+
+export function clearLoginAttempts(key:string):void{loginAttempts.delete(key)}
 
 export function issueSession(reply: FastifyReply): void {
   const payload: SessionPayload = {

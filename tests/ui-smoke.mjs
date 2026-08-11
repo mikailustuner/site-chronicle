@@ -1,8 +1,9 @@
 import { chromium } from 'playwright';
 
 const baseUrl = process.env.SITECHRONICLE_TEST_URL ?? 'http://127.0.0.1:43180';
-const password = process.env.SITECHRONICLE_TEST_PASSWORD;
+const password = process.env.SITECHRONICLE_TEST_PASSWORD ?? process.env.ADMIN_PASSWORD;
 const executablePath = process.env.CHROME_PATH;
+const expectedText = process.env.SITECHRONICLE_TEST_EXPECTED_TEXT;
 
 if (!password) throw new Error('SITECHRONICLE_TEST_PASSWORD is required');
 
@@ -12,12 +13,12 @@ const browser = await chromium.launch({
 });
 
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, ignoreHTTPSErrors: process.env.SITECHRONICLE_TEST_IGNORE_HTTPS_ERRORS === 'true' });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByRole('heading', { name: 'Evidence, not guesses.' }).waitFor();
-  await page.getByText('Fixture Store').first().waitFor();
+  if (expectedText) await page.getByText(expectedText).first().waitFor();
   await page.screenshot({ path: process.env.SITECHRONICLE_SCREENSHOT ?? '/tmp/sitechronicle-dashboard.png', fullPage: true });
   console.log(JSON.stringify({ ok: true, title: await page.title(), url: page.url() }));
 } finally {

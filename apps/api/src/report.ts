@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { newId, type AuditComparison, type CategoryScore, type Finding, type PageSnapshot } from '@sitechronicle/core';
 import type { Database } from './db.js';
 import { ArtifactStore } from './artifacts.js';
+import { config } from './config.js';
 
 interface AuditReportData {
   audit: Record<string, unknown>;
@@ -41,6 +42,7 @@ export async function buildComparisonReport(database: Database, comparisonId: st
 async function loadAuditReportData(database: Database, auditId: string): Promise<AuditReportData> {
   const audits = await database<Array<Record<string, unknown>>>`SELECT * FROM audits WHERE id = ${auditId}`;
   if (!audits[0]) throw new Error('Audit not found');
+  if (audits[0].status !== 'completed') throw Object.assign(new Error('Only completed audits can be reported'), { statusCode: 409 });
   const findingRows = await database<Array<{ payload: Finding }>>`SELECT payload FROM findings WHERE audit_id = ${auditId} ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END`;
   const pages = await database<Array<Record<string, unknown>>>`SELECT * FROM pages WHERE audit_id = ${auditId} ORDER BY normalized_url`;
   return {
@@ -56,16 +58,18 @@ function renderAuditReport(data: AuditReportData): string {
   const origin = String((data.audit.manifest as Record<string, unknown>)?.origin ?? '');
   const createdAt = String(data.audit.created_at ?? '');
   const counts = countSeverities(data.findings);
+  const summary=(data.audit.summary??{}) as Record<string,unknown>;const warnings=Array.isArray(summary.warnings)?summary.warnings.map(String):[];
   const body = `
     <section class="cover"><div><div class="eyebrow">Evidence-based web audit</div><h1>SiteChronicle<br>Audit Report</h1><p>${escapeHtml(origin)}</p></div><div class="cover-meta"><span>${escapeHtml(createdAt)}</span><span>${escapeHtml(auditId)}</span></div></section>
     <section><div class="kicker">Decision summary</div><h1>Measured state, preserved evidence</h1>
       <div class="cards">${data.scores.map((score) => card(score.category, score.score === null ? '—' : String(Math.round(score.score)))).join('')}${card('Critical findings', String(counts.critical))}${card('Pages scanned', String(data.pages.length))}</div>
       <p class="lead">Every finding below is linked to captured evidence. Behavioral effects remain hypotheses unless measured user data is attached.</p>
+      ${warnings.map(warning=>`<div class="warning">${escapeHtml(warning)}</div>`).join('')}
     </section>
     <section class="page-break"><div class="kicker">Scores</div><h1>Category baseline</h1>${scoreTable(data.scores)}</section>
     <section class="page-break"><div class="kicker">Prioritized findings</div><h1>What should change</h1>${data.findings.map(findingBlock).join('') || '<p>No findings were stored.</p>'}</section>
     <section class="page-break"><div class="kicker">Inventory</div><h1>Audited pages</h1>${pageTable(data.pages)}</section>
-    <section class="page-break"><div class="kicker">Method</div><h1>Reproducibility manifest</h1><pre>${escapeHtml(JSON.stringify(data.audit.manifest, null, 2))}</pre></section>`;
+    <section class="page-break"><div class="kicker">Method</div><h1>Coverage and reproducibility</h1><h2>Coverage</h2><pre>${escapeHtml(JSON.stringify(summary.coverage??{},null,2))}</pre><h2>Run manifest</h2><pre>${escapeHtml(JSON.stringify(data.audit.manifest, null, 2))}</pre></section>`;
   return documentShell(`SiteChronicle audit — ${origin}`, body);
 }
 
@@ -93,7 +97,7 @@ function documentShell(title: string, body: string): string {
 }
 
 async function htmlToPdf(html: string): Promise<Uint8Array> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(config.chromePath ? { executablePath: config.chromePath } : {}) });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load' });

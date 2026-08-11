@@ -16,6 +16,7 @@ export function createFinding(input: FindingInput): Finding {
     ruleId: input.ruleId,
     pageUrl: input.pageUrl ? normalizeFindingUrl(input.pageUrl) : null,
     observation: normalizeObservation(input.observation),
+    measurementContext: input.measurementContext ?? null,
   });
   return {
     ...input,

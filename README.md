@@ -12,7 +12,7 @@ SiteChronicle combines repeatable browser measurements, SEO and structured-data 
 - Mobile/desktop Chromium evidence, screenshots, normalized DOM, console/network failures, axe accessibility results and behavioral-friction observations.
 - Multi-run Lighthouse performance/SEO/accessibility/best-practices scores, lab metrics and resource inventory; optional CrUX field data when an API key is configured.
 - Deterministic SEO, structured-data, metadata, image, agent-readiness and cross-page commerce-fact consistency rules.
-- Passive response-header, cookie and TLS inspection; optional authenticated internal ZAP passive baseline. Form submission and active attacks remain off by default.
+- Passive response-header, cookie and TLS inspection; optional authenticated internal ZAP passive baseline. Unsupported form submission and active-attack profiles are rejected.
 - SHA-256 addressed HTML, header, screenshot, metric, scanner and report artifacts. A definitive finding cannot be created without evidence references.
 - Audit-to-audit score, page and finding lifecycle comparison. Cause candidates are explicitly marked `confirmed`, `likely` or `unknown`.
 - Styled A4 HTML/PDF audit and comparison reports with reproducibility manifests and evidence IDs.
@@ -47,6 +47,8 @@ Run the deterministic checks with `bun run typecheck && bun run test`. With a lo
 SITECHRONICLE_TEST_PASSWORD='<admin password>' bun run test:ui-smoke
 ```
 
+The isolated full-stack fixture test uses `compose.e2e.yml`; it temporarily enables private targets only for the fixture services, exercises two complete audits and deletes its test domain afterward.
+
 ## Production
 
 Create a `.env` with at least:
@@ -67,9 +69,11 @@ docker compose up -d --build
 
 Open `https://<SITECHRONICLE_HOST>`, sign in, add an origin you are authorized to inspect, select a scan profile and run the first baseline. Use **Compare runs** only after a second completed audit. Keep profiles identical when the delta will drive a decision; the comparison engine displays a warning if the toolchain or profile changed.
 
-To enable the optional passive ZAP service, set `ZAP_API_KEY`, set `ZAP_API_URL=http://zap:8080`, then start with `docker compose --profile security up -d`.
+To enable the optional passive ZAP service, set `ZAP_API_KEY`, set `ZAP_API_URL=http://zap:8080`, then start with `docker compose --profile security up -d`. SiteChronicle sends only explicit GET requests to already-crawled pages; the ZAP spider and active scanner are never invoked. In Compose, ZAP has no direct egress and reaches targets only through the worker's SSRF-filtered audit proxy.
 
-The worker has outbound audit access but no published port, no Docker socket, no Linux capabilities and only the artifact volume. PostgreSQL, API and ZAP stay on the internal backend network; only Caddy is connected to the public edge network.
+The worker has outbound audit access but no published port, no Docker socket, no Linux capabilities and only the artifact volume. PostgreSQL and API stay on the internal backend network. ZAP is isolated on a separate control network without direct egress; only Caddy is connected to the public edge network.
+
+Set `RETENTION_DAYS` to a positive number to remove completed, failed and cancelled audits after that many days. Set it to `0` to retain them indefinitely. The dashboard reports worker heartbeat state, while `/api/readiness` returns 503 until both the database and a worker are available.
 
 ## Audit interpretation
 
@@ -87,4 +91,10 @@ Audits preserve the scan profile, tool versions, runtime, timestamps and artifac
 
 ## Backups
 
-Run `deploy/backup.sh /absolute/backup/path`. The script exports PostgreSQL, artifacts and SHA-256 checksums. Restore procedures should be rehearsed on a separate server before production use.
+Run `deploy/backup.sh /absolute/backup/path`. The script exports PostgreSQL, artifacts and SHA-256 checksums. Restore only after rehearsal on a separate server:
+
+```sh
+CONFIRM_RESTORE=yes deploy/restore.sh /absolute/backup/path YYYYMMDDTHHMMSSZ
+```
+
+The restore verifies checksums and archive paths before stopping API/worker services, replacing the database and merging the content-addressed artifact archive.

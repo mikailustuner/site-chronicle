@@ -29,7 +29,11 @@ export function normalizeUrl(input: string, base?: string): string {
 export function sameSite(a: string, b: string): boolean {
   const left = parseHttpUrl(a);
   const right = parseHttpUrl(b);
-  return left.hostname === right.hostname || left.hostname.endsWith(`.${right.hostname}`) || right.hostname.endsWith(`.${left.hostname}`);
+  // Authorization is registered for an exact hostname and port scope. The two
+  // implicit standard web ports are treated as one scope so a conventional
+  // HTTP -> HTTPS redirect remains possible.
+  const scopePort = (url: URL) => url.port || 'standard-web';
+  return left.hostname === right.hostname && scopePort(left) === scopePort(right);
 }
 
 export function isIpHostname(hostname: string): boolean {

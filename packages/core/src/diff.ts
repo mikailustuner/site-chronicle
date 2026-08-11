@@ -8,13 +8,16 @@ export interface ComparisonInput {
 
 export function compareAudits(input: ComparisonInput): AuditComparison {
   const warnings: string[] = [];
-  const comparable = input.baseline.manifest.profileHash === input.current.manifest.profileHash;
-  if (!comparable) warnings.push('Scan profiles differ; metric deltas may include methodology changes.');
+  const profilesMatch = input.baseline.manifest.profileHash === input.current.manifest.profileHash;
+  if (!profilesMatch) warnings.push('Scan profiles differ; metric deltas may include methodology changes.');
+  let scannerVersionsMatch = true;
   for (const key of new Set([...Object.keys(input.baseline.manifest.scannerVersions), ...Object.keys(input.current.manifest.scannerVersions)])) {
     if (input.baseline.manifest.scannerVersions[key] !== input.current.manifest.scannerVersions[key]) {
+      scannerVersionsMatch = false;
       warnings.push(`${key} version changed: ${input.baseline.manifest.scannerVersions[key] ?? 'unknown'} → ${input.current.manifest.scannerVersions[key] ?? 'unknown'}`);
     }
   }
+  const comparable = profilesMatch && scannerVersionsMatch;
 
   const beforeScores = new Map(input.baseline.scores.map((item) => [item.category, item.score]));
   const afterScores = new Map(input.current.scores.map((item) => [item.category, item.score]));
