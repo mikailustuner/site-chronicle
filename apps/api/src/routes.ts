@@ -7,30 +7,64 @@ import { validateTarget, verifyDomainFile, verifyDomainTxt } from './security/ta
 import { ArtifactStore } from './artifacts.js';
 import { buildAuditReport, buildComparisonReport } from './report.js';
 import { CronExpressionParser } from 'cron-parser';
+import { answerChat } from './chat.js';
+import { collectTelemetry, trackerScript } from './telemetry.js';
 
 export async function registerRoutes(app: FastifyInstance, database: Database): Promise<void> {
+  app.get('/t/:key/tracker.js', async (request, reply) => {
+    const {key}=z.object({key:z.string().regex(/^[a-f0-9]{32}$/)}).parse(request.params);
+    const endpoint=new URL(`/api/telemetry/collect/${key}`,config.publicBaseUrl).toString();
+    return reply.header('cache-control','public,max-age=3600').header('cross-origin-resource-policy','cross-origin').type('application/javascript; charset=utf-8').send(trackerScript(endpoint));
+  });
+
+  app.post('/api/telemetry/collect/:key', async (request, reply) => {
+    const {key}=z.object({key:z.string().regex(/^[a-f0-9]{32}$/)}).parse(request.params);
+    const result=await collectTelemetry({database,key,body:request.body,...(request.headers.origin?{requestOrigin:request.headers.origin}:{})}).catch(()=> 'not_found' as const);
+    if(result==='accepted')return reply.code(202).send();
+    if(result==='rate_limited')return reply.code(429).send();
+    return reply.code(404).send();
+  });
+
   app.get('/api/dashboard', async () => {
-    const domains = await database<Array<Record<string, unknown>>>`SELECT * FROM domains ORDER BY created_at DESC`;
+    const domains = await database<Array<Record<string, unknown>>>`
+      SELECT d.*,
+        COALESCE((SELECT count(*)::int FROM opportunities o WHERE o.domain_id=d.id AND o.status IN ('open','planned','testing')),0) AS open_opportunities,
+        COALESCE((SELECT count(*)::int FROM telemetry_samples t WHERE t.domain_id=d.id AND t.metric='page_view' AND t.recorded_at >= now() - interval '28 days'),0) AS observed_views_28d,
+        (SELECT a.status FROM audits a WHERE a.domain_id=d.id ORDER BY a.created_at DESC LIMIT 1) AS latest_status,
+        (SELECT a.scores FROM audits a WHERE a.domain_id=d.id AND a.status='completed' ORDER BY a.completed_at DESC LIMIT 1) AS latest_scores,
+        (SELECT a.completed_at FROM audits a WHERE a.domain_id=d.id AND a.status='completed' ORDER BY a.completed_at DESC LIMIT 1) AS latest_completed_at
+      FROM domains d WHERE d.archived_at IS NULL ORDER BY d.created_at DESC
+    `;
     const audits = await database<Array<Record<string, unknown>>>`SELECT id, domain_id, status, scores, summary, error, started_at, completed_at, created_at FROM audits ORDER BY created_at DESC LIMIT 20`;
     const openFindings = await database<Array<{ severity: string; count: number }>>`SELECT severity, count(*)::int AS count FROM findings f JOIN audits a ON a.id = f.audit_id WHERE a.id IN (SELECT DISTINCT ON (domain_id) id FROM audits WHERE status = 'completed' ORDER BY domain_id, created_at DESC) GROUP BY severity`;
     const workers = await database<Array<{worker_id:string;last_seen_at:string;concurrency:number}>>`SELECT worker_id,last_seen_at,concurrency FROM worker_heartbeats WHERE last_seen_at > now() - interval '45 seconds' ORDER BY last_seen_at DESC`;
     return { domains, audits, workers, workerOnline: workers.length > 0, findingCounts: Object.fromEntries(openFindings.map((row) => [row.severity, Number(row.count)])) };
   });
 
-  app.get('/api/domains', async () => database`SELECT * FROM domains ORDER BY created_at DESC`);
+  app.get('/api/domains', async (request) => {
+    const query=z.object({includeArchived:z.coerce.boolean().default(false)}).parse(request.query);
+    return query.includeArchived
+      ? database`SELECT * FROM domains ORDER BY archived_at NULLS FIRST,created_at DESC`
+      : database`SELECT * FROM domains WHERE archived_at IS NULL ORDER BY created_at DESC`;
+  });
 
   app.post('/api/domains', async (request, reply) => {
-    const body = z.object({ name: z.string().min(1).max(120), origin: z.string().min(1), authorizationConfirmed: z.literal(true) }).parse(request.body);
+    const body = z.object({ name: z.string().min(1).max(120), origin: z.string().min(1), authorizationConfirmed: z.literal(true), dailyMonitoring:z.boolean().default(true), telemetryEnabled:z.boolean().default(false) }).parse(request.body);
     const target = await validateTarget(body.origin).catch((error: unknown) => {
       throw Object.assign(new Error(error instanceof Error ? error.message : 'Invalid audit target'), { statusCode: 400 });
     });
     const origin = target.url.origin;
     const id = newId('domain');
     const token = `sitechronicle-verification=${crypto.randomUUID()}`;
+    const telemetryKey=crypto.randomUUID().replaceAll('-','');
     const rows = await database.begin(async transaction=>{const inserted=await transaction<Array<Record<string,unknown>>>`
-      INSERT INTO domains (id, name, origin, hostname, verification_token, authorization_confirmed)
-      VALUES (${id}, ${body.name}, ${origin}, ${target.url.hostname}, ${token}, true) RETURNING *`;
-      const profile=ScanProfileSchema.parse({});await transaction`INSERT INTO scan_profiles (id,domain_id,name,config,is_default) VALUES (${newId('profile')},${id},'Standard audit',${transaction.json(profile)},true)`;return inserted;
+      INSERT INTO domains (id, name, origin, hostname, verification_token, authorization_confirmed,telemetry_key,telemetry_enabled)
+      VALUES (${id}, ${body.name}, ${origin}, ${target.url.hostname}, ${token}, true,${telemetryKey},${body.telemetryEnabled}) RETURNING *`;
+      const pulseId=newId('profile');const pulse=ScanProfileSchema.parse({name:'Daily pulse',maxUrls:80,maxBrowserPages:3,performanceRuns:1,devices:['mobile'],states:['fresh-session'],includeSecurityBaseline:false,includeCrux:true});
+      const deep=ScanProfileSchema.parse({name:'Deep audit'});
+      await transaction`INSERT INTO scan_profiles (id,domain_id,name,config,is_default) VALUES (${pulseId},${id},'Daily pulse',${transaction.json(pulse)},true),(${newId('profile')},${id},'Deep audit',${transaction.json(deep)},false)`;
+      if(body.dailyMonitoring){const minute=parseInt(id.slice(-2),16)%60;const cron=`${minute} 3 * * *`;const next=CronExpressionParser.parse(cron,{currentDate:new Date(),tz:pulse.timezone}).next().toDate();await transaction`INSERT INTO schedules (id,domain_id,profile_id,cron,timezone,next_run_at) VALUES (${newId('schedule')},${id},${pulseId},${cron},${pulse.timezone},${next})`}
+      return inserted;
     }).catch((error: unknown) => {
       if (String(error).includes('domains_origin_key')) throw Object.assign(new Error('Domain already exists'), { statusCode: 409 });
       throw error;
@@ -168,6 +202,57 @@ export async function registerRoutes(app: FastifyInstance, database: Database): 
   app.get('/api/domains/:id/trends', async (request) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     return database`SELECT id,status,scores,summary,manifest,started_at,completed_at,created_at FROM audits WHERE domain_id=${id} AND status='completed' ORDER BY created_at`;
+  });
+
+  app.get('/api/domains/:id/traffic', async (request, reply) => {
+    const {id}=z.object({id:z.string()}).parse(request.params);
+    const {days}=z.object({days:z.coerce.number().int().min(1).max(365).default(28)}).parse(request.query);
+    const domains=await database<Array<Record<string,unknown>>>`SELECT id,name,origin,telemetry_enabled,telemetry_key FROM domains WHERE id=${id}`;
+    if(!domains[0])return reply.code(404).send({error:'domain_not_found'});
+    const [daily,vitals,pages,referrers]=await Promise.all([
+      database`SELECT date_trunc('day',recorded_at) AS day,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY 1 ORDER BY 1`,
+      database`SELECT metric,count(*)::int AS samples,avg(value)::double precision AS average,percentile_disc(.75) WITHIN GROUP (ORDER BY value) AS p75,count(*) FILTER(WHERE rating='good')::int AS good,count(*) FILTER(WHERE rating='needs-improvement')::int AS needs_improvement,count(*) FILTER(WHERE rating='poor')::int AS poor FROM telemetry_samples WHERE domain_id=${id} AND metric<>'page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY metric ORDER BY metric`,
+      database`SELECT path,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY path ORDER BY views DESC LIMIT 30`,
+      database`SELECT COALESCE(referrer_host,'Direct / unknown') AS referrer,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY referrer_host ORDER BY views DESC LIMIT 20`,
+    ]);
+    return {domain:domains[0],days,daily,vitals,pages,referrers,privacy:{cookies:false,persistentIdentifiers:false,ipStored:false,queryStringsStored:false,label:'Anonymous first-party page observations'}};
+  });
+
+  app.patch('/api/domains/:id/telemetry', async (request, reply) => {
+    const {id}=z.object({id:z.string()}).parse(request.params);const {enabled}=z.object({enabled:z.boolean()}).parse(request.body);
+    const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET telemetry_enabled=${enabled},telemetry_key=COALESCE(telemetry_key,${crypto.randomUUID().replaceAll('-','')}),updated_at=now() WHERE id=${id} RETURNING *`;
+    if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0];
+  });
+
+  app.get('/api/domains/:id/tracker',async(request,reply)=>{
+    const {id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`SELECT id,origin,telemetry_key,telemetry_enabled FROM domains WHERE id=${id}`;const domain=rows[0];if(!domain)return reply.code(404).send({error:'domain_not_found'});const src=new URL(`/t/${domain.telemetry_key}/tracker.js`,config.publicBaseUrl).toString();return{enabled:domain.telemetry_enabled,src,snippet:`<script defer src="${src}"></script>`,privacy:{cookies:false,ipStored:false,persistentIdentifiers:false,queryStringsStored:false}}
+  });
+
+  app.get('/api/opportunities',async(request)=>{
+    const query=z.object({domainId:z.string().optional(),status:z.enum(['open','planned','testing','validated','dismissed','resolved','all']).default('open'),limit:z.coerce.number().int().min(1).max(500).default(200)}).parse(request.query);
+    return database`SELECT o.*,d.name AS domain_name,d.origin FROM opportunities o JOIN domains d ON d.id=o.domain_id WHERE d.archived_at IS NULL AND (${query.domainId??null}::text IS NULL OR o.domain_id=${query.domainId??null}) AND (${query.status}='all' OR o.status=${query.status}) ORDER BY o.priority DESC,o.updated_at DESC LIMIT ${query.limit}`;
+  });
+
+  app.patch('/api/opportunities/:id',async(request,reply)=>{
+    const {id}=z.object({id:z.string()}).parse(request.params);const {status}=z.object({status:z.enum(['open','planned','testing','validated','dismissed','resolved'])}).parse(request.body);
+    const rows=await database<Array<Record<string,unknown>>>`UPDATE opportunities SET status=${status},resolved_at=CASE WHEN ${status} IN ('validated','dismissed','resolved') THEN now() ELSE null END,updated_at=now() WHERE id=${id} RETURNING *`;if(!rows[0])return reply.code(404).send({error:'opportunity_not_found'});return rows[0];
+  });
+
+  app.get('/api/automations',async()=>database`SELECT s.*,p.name AS profile_name,d.name AS domain_name,d.origin FROM schedules s JOIN scan_profiles p ON p.id=s.profile_id JOIN domains d ON d.id=s.domain_id WHERE d.archived_at IS NULL ORDER BY s.enabled DESC,s.next_run_at`);
+
+  app.post('/api/domains/:id/archive',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const active=await database<Array<{count:number}>>`SELECT count(*)::int AS count FROM audits WHERE domain_id=${id} AND status IN ('queued','running')`;if(Number(active[0]?.count??0)>0)return reply.code(409).send({error:'domain_has_active_audits'});const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET archived_at=now(),updated_at=now() WHERE id=${id} AND archived_at IS NULL RETURNING *`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});await database`UPDATE schedules SET enabled=false,updated_at=now() WHERE domain_id=${id}`;return rows[0]});
+  app.post('/api/domains/:id/restore',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET archived_at=null,updated_at=now() WHERE id=${id} RETURNING *`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0]});
+  app.get('/api/domains/:id/deletion-preview',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`SELECT d.id,d.name,d.origin,(SELECT count(*)::int FROM audits WHERE domain_id=d.id) AS audits,(SELECT count(*)::int FROM evidence e JOIN audits a ON a.id=e.audit_id WHERE a.domain_id=d.id) AS evidence,(SELECT count(*)::int FROM telemetry_samples WHERE domain_id=d.id) AS telemetry_samples,(SELECT count(*)::int FROM opportunities WHERE domain_id=d.id) AS opportunities FROM domains d WHERE d.id=${id}`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0]});
+
+  app.get('/api/chat/threads',async()=>database`SELECT t.*,d.name AS domain_name,(SELECT content FROM chat_messages WHERE thread_id=t.id ORDER BY created_at DESC LIMIT 1) AS last_message FROM chat_threads t LEFT JOIN domains d ON d.id=t.domain_id ORDER BY t.updated_at DESC LIMIT 100`);
+  app.get('/api/chat/threads/:id',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const threads=await database<Array<Record<string,unknown>>>`SELECT * FROM chat_threads WHERE id=${id}`;if(!threads[0])return reply.code(404).send({error:'thread_not_found'});const messages=await database`SELECT * FROM chat_messages WHERE thread_id=${id} ORDER BY created_at`;return{thread:threads[0],messages}});
+  app.post('/api/chat',async(request,reply)=>{
+    const body=z.object({threadId:z.string().optional(),domainId:z.string().optional(),message:z.string().min(1).max(8000)}).parse(request.body);let threadId=body.threadId;
+    if(threadId){const existing=await database<Array<{id:string}>>`SELECT id FROM chat_threads WHERE id=${threadId}`;if(!existing[0])return reply.code(404).send({error:'thread_not_found'})}else{threadId=newId('thread');await database`INSERT INTO chat_threads(id,domain_id,title) VALUES (${threadId},${body.domainId??null},${body.message.slice(0,80)})`}
+    await database`INSERT INTO chat_messages(id,thread_id,role,content) VALUES (${newId('message')},${threadId},'user',${body.message})`;
+    const result=await answerChat({database,threadId,question:body.message,...(body.domainId?{domainId:body.domainId}:{})});
+    const messageId=newId('message');await database`INSERT INTO chat_messages(id,thread_id,role,content,citations) VALUES (${messageId},${threadId},'assistant',${result.answer},${database.json(result.citations as never)})`;await database`UPDATE chat_threads SET updated_at=now() WHERE id=${threadId}`;
+    return reply.code(201).send({threadId,message:{id:messageId,role:'assistant',content:result.answer,citations:result.citations},tools:result.tools});
   });
 
   app.get('/api/domains/:id/schedules', async (request) => {

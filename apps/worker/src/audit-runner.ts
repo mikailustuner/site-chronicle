@@ -11,6 +11,7 @@ import { analyzeSitewide } from './scanners/sitewide.js';
 import { enrichWithAi } from './scanners/ai.js';
 import { median } from './scanners/math.js';
 import { config } from './config.js';
+import { refreshOpportunities } from './opportunities.js';
 
 interface AuditRow { id:string;domain_id:string;status:string;manifest:AuditManifest;origin:string;hostname:string;profile_config:unknown;verified_at:string|null }
 interface StoredPage { page:CrawledPage; pageId:string; htmlEvidenceId:string; headersEvidenceId:string }
@@ -59,6 +60,7 @@ async function runAuditLocked(database:Database,auditId:string):Promise<void>{
 
     if(browserCompleted!==browserExpected||lighthouseCompleted!==lighthouseExpected)throw new Error(`Required scanner coverage incomplete (browser ${browserCompleted}/${browserExpected}, Lighthouse ${lighthouseCompleted}/${lighthouseExpected})`);
     const persistedFindings=await persistFindings(database,allFindings);const ai=await enrichWithAi(persistedFindings).catch(error=>{warnings.push(`AI review: ${String(error)}`);return null});if(ai)for(const [findingId,review] of Object.entries(ai))await database`UPDATE findings SET payload=payload || ${database.json({aiReview:review} as never)} WHERE id=${findingId}`;
+    await refreshOpportunities(database,{domainId:audit.domain_id,auditId,findings:persistedFindings}).catch(error=>warnings.push(`Opportunity refresh: ${String(error)}`));
     const scores=buildScores(persistedFindings,lighthouseResults,browserScores,sitewide.agentScore);const completedAt=new Date();manifest.completedAt=completedAt.toISOString();
     const counts=countFindings(persistedFindings);await database`UPDATE audits SET status='completed',completed_at=${completedAt},manifest=${database.json(manifest as never)},scores=${database.json(scores as never)},summary=${database.json({pagesScanned:stored.length,browserPages:representative.length,performanceMeasurements:lighthouseResults.length,coverage:coverage(),findings:counts,warnings,facts:sitewide.facts,cruxAvailable:Boolean(crux),durationMs:completedAt.getTime()-startedAt.getTime()} as never)} WHERE id=${auditId}`;
   }catch(error){

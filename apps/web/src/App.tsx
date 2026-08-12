@@ -6,11 +6,16 @@ type Row = Record<string, any>;
 type View =
   | { name: 'dashboard' }
   | { name: 'audits' }
+  | { name: 'opportunities' }
+  | { name: 'traffic' }
+  | { name: 'automations' }
+  | { name: 'chat' }
+  | { name: 'settings' }
   | { name: 'rules' }
   | { name: 'domain'; id: string }
   | { name: 'audit'; id: string }
   | { name: 'compare'; domainId: string };
-type DomainTab = 'overview' | 'history' | 'profiles' | 'automation' | 'ownership';
+type DomainTab = 'overview' | 'opportunities' | 'traffic' | 'history' | 'profiles' | 'automation' | 'ownership' | 'settings';
 type AuditTab = 'summary' | 'findings' | 'pages' | 'evidence';
 
 const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -36,6 +41,16 @@ export function App() {
       ? '/'
       : next.name === 'audits'
         ? '/audits'
+        : next.name === 'opportunities'
+          ? '/opportunities'
+          : next.name === 'traffic'
+            ? '/traffic'
+            : next.name === 'automations'
+              ? '/automations'
+              : next.name === 'chat'
+                ? '/chat'
+                : next.name === 'settings'
+                  ? '/settings'
         : next.name === 'rules'
           ? '/rules'
           : next.name === 'domain'
@@ -58,6 +73,11 @@ export function App() {
     }}>
       {view.name === 'dashboard' ? <Dashboard go={go} />
         : view.name === 'audits' ? <AuditExplorer go={go} />
+          : view.name === 'opportunities' ? <OpportunityHub go={go} />
+            : view.name === 'traffic' ? <TrafficHub go={go} />
+              : view.name === 'automations' ? <AutomationHub go={go} />
+                : view.name === 'chat' ? <AIChat go={go} />
+                  : view.name === 'settings' ? <SettingsPage go={go} />
           : view.name === 'rules' ? <RuleLibrary />
             : view.name === 'domain' ? <DomainDetail id={view.id} go={go} />
               : view.name === 'audit' ? <AuditDetail id={view.id} go={go} />
@@ -113,11 +133,18 @@ function Shell({ children, view, go, onLogout }: { children: ReactNode; view: Vi
       <aside className="sidebar">
         <Logo />
         <nav aria-label="Primary navigation">
-          <NavButton active={current === 'dashboard'} icon="grid" onClick={() => go({ name: 'dashboard' })}>Overview</NavButton>
-          <NavButton active={current === 'audits'} icon="pulse" onClick={() => go({ name: 'audits' })}>All audits</NavButton>
-          <NavButton active={current === 'rules'} icon="book" onClick={() => go({ name: 'rules' })}>Rule library</NavButton>
+          <span className="nav-label">Intelligence</span>
+          <NavButton active={current === 'dashboard'} icon="grid" onClick={() => go({ name: 'dashboard' })}>Portfolio</NavButton>
+          <NavButton active={current === 'opportunities'} icon="spark" onClick={() => go({ name: 'opportunities' })}>Opportunities</NavButton>
+          <NavButton active={current === 'traffic'} icon="trend" onClick={() => go({ name: 'traffic' })}>Traffic & vitals</NavButton>
+          <NavButton active={current === 'chat'} icon="chat" onClick={() => go({ name: 'chat' })}>AI analyst</NavButton>
+          <span className="nav-label">Operations</span>
+          <NavButton active={current === 'automations'} icon="clock" onClick={() => go({ name: 'automations' })}>Automations</NavButton>
+          <NavButton active={current === 'audits'} icon="pulse" onClick={() => go({ name: 'audits' })}>Audit history</NavButton>
+          <NavButton active={current === 'rules'} icon="book" onClick={() => go({ name: 'rules' })}>Evidence rules</NavButton>
+          <NavButton active={current === 'settings'} icon="sliders" onClick={() => go({ name: 'settings' })}>Settings</NavButton>
         </nav>
-        <div className="side-note"><span className="status-dot" />Passive by design<p>Form submission and active-attack profiles are rejected.</p></div>
+        <div className="side-note"><span className="status-dot" />Private by default<p>No ad platform or customer analytics account is required.</p></div>
         <button className="logout" onClick={onLogout}><Icon name="logout" />Sign out</button>
       </aside>
       <main className="workspace">{children}</main>
@@ -130,7 +157,7 @@ function NavButton({ active, icon, children, onClick }: { active: boolean; icon:
 }
 
 function Logo() {
-  return <div className="logo"><span className="logo-mark">SC</span><span><b>SiteChronicle</b><small>Evidence & change intelligence</small></span></div>;
+  return <div className="logo"><img className="logo-mark" src="/sitechronicle-mark.png" alt="" /><span><b>SiteChronicle</b><small>Private site intelligence</small></span></div>;
 }
 
 function Dashboard({ go }: { go: (view: View) => void }) {
@@ -152,17 +179,17 @@ function Dashboard({ go }: { go: (view: View) => void }) {
 
   return (
     <>
-      <Header eyebrow="Workspace" title="Evidence, not guesses." subtitle="Browse monitored properties, inspect recent runs and launch repeatable audits." action={<button className="primary" onClick={() => setShowAdd(true)}>+ Add domain</button>} />
+      <Header eyebrow="Private intelligence" title="Every site. One clear view." subtitle="Daily technical signals, first-party observations and evidence-linked growth opportunities—without asking clients for analytics access." action={<button className="primary" onClick={() => setShowAdd(true)}>+ Add site</button>} />
       {!data.workerOnline && <div className="alert danger"><b>No active worker.</b><span>Audits cannot start until a worker heartbeat is detected.</span></div>}
       <div className="metric-grid">
-        <Metric label="Domains" value={data.domains.length} icon="domain" />
+        <Metric label="Active sites" value={data.domains.length} icon="domain" />
         <Metric label="Recent audits" value={data.audits.length} icon="pulse" />
-        <Metric label="Critical open" value={counts.critical ?? 0} tone="red" icon="alert" />
-        <Metric label="High open" value={counts.high ?? 0} tone="amber" icon="flag" />
+        <Metric label="Open opportunities" value={(data.domains as Row[]).reduce((sum, domain) => sum + Number(domain.open_opportunities ?? 0), 0)} tone="amber" icon="spark" />
+        <Metric label="Observed loads · 28d" value={(data.domains as Row[]).reduce((sum, domain) => sum + Number(domain.observed_views_28d ?? 0), 0)} icon="trend" />
       </div>
       <section className="panel">
         <div className="panel-head responsive-head">
-          <div><p className="eyebrow">Properties</p><h2>Monitored domains</h2><p className="section-copy">Search and open an authorized property workspace.</p></div>
+          <div><p className="eyebrow">Portfolio</p><h2>Monitored sites</h2><p className="section-copy">Synthetic checks are always labeled separately from anonymous visitor observations.</p></div>
           <div className="compact-tools">
             <SearchInput value={query} onChange={setQuery} placeholder="Search domains…" />
             <select aria-label="Verification status" value={verification} onChange={(event) => setVerification(event.target.value)}>
@@ -175,8 +202,8 @@ function Dashboard({ go }: { go: (view: View) => void }) {
         {domains.length ? <div className="domain-grid">{domains.map((domain) => (
           <button className="domain-card" key={domain.id} onClick={() => go({ name: 'domain', id: domain.id })}>
             <span className="domain-icon">{String(domain.name).slice(0, 2).toUpperCase()}</span>
-            <span><b>{domain.name}</b><small>{domain.origin}</small></span>
-            <span className={`pill ${domain.verified_at ? 'ok' : 'neutral'}`}>{domain.verified_at ? 'Verified' : 'Passive'}</span>
+            <span><b>{domain.name}</b><small>{domain.origin}</small><small className="domain-facts">{domain.open_opportunities ?? 0} opportunities · {domain.observed_views_28d ?? 0} observed loads</small></span>
+            <span className={`pill ${domain.latest_status === 'completed' ? 'ok' : 'neutral'}`}>{domain.latest_status ?? 'New'}</span>
             <Icon name="arrow" />
           </button>
         ))}</div> : <Empty title="No matching domains" text="Change the search or verification filter." />}
@@ -194,12 +221,14 @@ function AddDomain({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const [name, setName] = useState('');
   const [origin, setOrigin] = useState('');
   const [authorized, setAuthorized] = useState(false);
+  const [dailyMonitoring, setDailyMonitoring] = useState(true);
+  const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const [error, setError] = useState('');
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
     try {
-      await post('/api/domains', { name, origin, authorizationConfirmed: authorized });
+      await post('/api/domains', { name, origin, authorizationConfirmed: authorized, dailyMonitoring, telemetryEnabled });
       onAdded();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to add domain');
@@ -207,11 +236,13 @@ function AddDomain({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   };
   return (
     <Modal onClose={onClose}>
-      <p className="eyebrow">New property</p><h2>Add a domain</h2>
+      <p className="eyebrow">New property</p><h2>Add a site</h2>
       <form onSubmit={submit}>
         <label>Display name<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Storefront" /></label>
         <label>Origin<input required type="url" value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="https://example.com" /></label>
         <label className="check"><input type="checkbox" checked={authorized} onChange={(event) => setAuthorized(event.target.checked)} /><span>I own this property or have explicit authorization to audit it.</span></label>
+        <label className="check"><input type="checkbox" checked={dailyMonitoring} onChange={(event) => setDailyMonitoring(event.target.checked)} /><span>Create a lightweight daily pulse automation.</span></label>
+        <label className="check"><input type="checkbox" checked={telemetryEnabled} onChange={(event) => setTelemetryEnabled(event.target.checked)} /><span>Enable the anonymous, cookieless measurement tag. Installation instructions appear after adding the site.</span></label>
         {error && <div className="alert danger">{error}</div>}
         <div className="button-row"><button type="button" onClick={onClose}>Cancel</button><button className="primary" disabled={!authorized}>Add domain</button></div>
       </form>
@@ -288,7 +319,7 @@ function DomainDetail({ id, go }: { id: string; go: (view: View) => void }) {
     setError('');
     try {
       const [domainRows, profileRows, auditRows, scheduleRows, trendRows] = await Promise.all([
-        api<Row[]>('/api/domains'), api<Row[]>(`/api/domains/${id}/profiles`), api<Row[]>(`/api/audits?domainId=${id}`),
+        api<Row[]>('/api/domains?includeArchived=true'), api<Row[]>(`/api/domains/${id}/profiles`), api<Row[]>(`/api/audits?domainId=${id}`),
         api<Row[]>(`/api/domains/${id}/schedules`), api<Row[]>(`/api/domains/${id}/trends`),
       ]);
       setDomain(domainRows.find((row) => row.id === id));
@@ -332,15 +363,18 @@ function DomainDetail({ id, go }: { id: string; go: (view: View) => void }) {
         <Metric label="Profiles" value={profiles.length} icon="sliders" />
       </div>
       <Tabs value={tab} onChange={(value) => setTab(value as DomainTab)} items={[
-        { value: 'overview', label: 'Overview' }, { value: 'history', label: 'Audit history', count: audits.length },
+        { value: 'overview', label: 'Overview' }, { value: 'opportunities', label: 'Opportunities' }, { value: 'traffic', label: 'Traffic & vitals' }, { value: 'history', label: 'Audit history', count: audits.length },
         { value: 'profiles', label: 'Scan profiles', count: profiles.length }, { value: 'automation', label: 'Automation', count: schedules.length },
-        { value: 'ownership', label: 'Ownership' },
+        { value: 'ownership', label: 'Ownership' }, { value: 'settings', label: 'Settings' },
       ]} />
       {tab === 'overview' && <DomainOverview domain={domain} audits={audits} trends={trends} schedules={schedules} go={go} />}
+      {tab === 'opportunities' && <OpportunityPanel domainId={id} go={go} />}
+      {tab === 'traffic' && <TrafficPanel domainId={id} />}
       {tab === 'history' && <DomainAuditHistory audits={audits} go={go} />}
       {tab === 'profiles' && <section className="panel"><div className="panel-head"><div><p className="eyebrow">Configuration</p><h2>Scan profiles</h2><p className="section-copy">Choose a profile to inspect or create a variant for a different crawl scope.</p></div><button className="primary" onClick={() => setShowProfile(true)}>+ New profile</button></div><div className="profile-browser"><div className="profile-list" role="tablist">{profiles.map((profile) => <button role="tab" aria-selected={profile.id === selectedProfile?.id} className={profile.id === selectedProfile?.id ? 'active' : ''} key={profile.id} onClick={() => setProfileId(profile.id)}><span><b>{profile.name}</b><small>{profile.config.maxUrls} URLs · {profile.config.devices.join(' + ')}</small></span>{profile.is_default && <span className="pill ok">Default</span>}</button>)}</div>{selectedProfile ? <ProfileEditor profile={selectedProfile} onSaved={load} /> : <Empty title="No scan profiles" text="Create a profile before running an audit." />}</div></section>}
       {tab === 'automation' && <SchedulePanel domainId={id} profiles={profiles} schedules={schedules} onChanged={load} />}
       {tab === 'ownership' && <VerificationPanel domain={domain} onVerified={load} />}
+      {tab === 'settings' && <DomainSettings domain={domain} go={go} onChanged={load} />}
       {showProfile && selectedProfile && <NewProfile baseProfile={selectedProfile} domainId={id} onClose={() => setShowProfile(false)} onAdded={() => { setShowProfile(false); void load(); }} />}
     </>
   );
@@ -733,6 +767,107 @@ function ComparisonPages({ pages }: { pages: Row[] }) {
   return <section className="panel"><div className="filter-row">{['changed', 'added', 'removed', 'unchanged', 'all'].map((value) => <button className={status === value ? 'active' : ''} onClick={() => setStatus(value)} key={value}>{value}</button>)}</div><ResultBar count={visible.length} total={pages.length} label="pages" />{visible.length ? visible.map((page) => <details className="page-change" key={page.normalizedUrl}><summary><span className={`pill ${page.status === 'unchanged' ? 'neutral' : page.status === 'added' ? 'ok' : page.status === 'removed' ? 'bad' : 'running'}`}>{page.status}</span><b>{page.normalizedUrl}</b><span>{page.changes.length} fields</span></summary><div className="change-table">{page.changes.map((change: Row) => <div key={change.field}><b>{change.field}</b><code>{displayValue(change.before)}</code><span>→</span><code>{displayValue(change.after)}</code>{change.delta !== undefined && <em>{change.delta > 0 ? '+' : ''}{change.delta}</em>}</div>)}</div></details>) : <Empty title="No pages in this state" text="Choose another lifecycle filter." />}</section>;
 }
 
+function OpportunityHub({ go }: { go: (view: View) => void }) {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [domains, setDomains] = useState<Row[]>([]);
+  const [domainId, setDomainId] = useState('all');
+  const [status, setStatus] = useState('open');
+  const [query, setQuery] = useState('');
+  const load = () => Promise.all([api<Row[]>('/api/opportunities?status=all&limit=500'), api<Row[]>('/api/domains')]).then(([items, sites]) => { setRows(items); setDomains(sites); });
+  useEffect(() => { void load(); }, []);
+  if (!rows) return <Loading />;
+  const visible = rows.filter((item) => (domainId === 'all' || item.domain_id === domainId) && (status === 'all' || item.status === status) && includesText(`${item.title} ${item.observation} ${item.recommendation} ${item.domain_name}`, query));
+  return <>
+    <Header eyebrow="Opportunity engine" title="Work on what matters next." subtitle="Priority combines severity, evidence confidence and—when the private tag is installed—observed page exposure. It never represents guaranteed uplift." />
+    <div className="metric-grid">
+      <Metric label="Open" value={rows.filter((row) => row.status === 'open').length} icon="spark" />
+      <Metric label="Planned" value={rows.filter((row) => row.status === 'planned').length} icon="clock" />
+      <Metric label="Testing" value={rows.filter((row) => row.status === 'testing').length} icon="pulse" />
+      <Metric label="Validated" value={rows.filter((row) => row.status === 'validated').length} tone="green" icon="check" />
+    </div>
+    <section className="panel">
+      <div className="browser-toolbar"><SearchInput value={query} onChange={setQuery} placeholder="Search opportunities…" /><label><span>Site</span><select value={domainId} onChange={(event) => setDomainId(event.target.value)}><option value="all">All sites</option>{domains.map((domain) => <option key={domain.id} value={domain.id}>{domain.name}</option>)}</select></label><label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}>{['open','planned','testing','validated','resolved','dismissed','all'].map((value) => <option key={value}>{value}</option>)}</select></label></div>
+      <ResultBar count={visible.length} total={rows.length} label="opportunities" />
+      <OpportunityCards rows={visible} onChanged={load} onOpenDomain={(id) => go({name:'domain',id})} showDomain />
+    </section>
+  </>;
+}
+
+function OpportunityPanel({ domainId, go }: { domainId: string; go: (view: View) => void }) {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const load = () => api<Row[]>(`/api/opportunities?domainId=${encodeURIComponent(domainId)}&status=all&limit=500`).then(setRows);
+  useEffect(() => { void load(); }, [domainId]);
+  if (!rows) return <Loading />;
+  return <section className="panel"><div className="panel-head"><div><p className="eyebrow">Evidence to action</p><h2>Growth opportunities</h2><p className="section-copy">Measured conditions and hypotheses stay visibly separate through implementation and validation.</p></div><button onClick={() => go({name:'opportunities'})}>Open portfolio view →</button></div><OpportunityCards rows={rows} onChanged={load} onOpenDomain={() => undefined} /></section>;
+}
+
+function OpportunityCards({ rows, onChanged, onOpenDomain, showDomain=false }: { rows: Row[]; onChanged: () => void; onOpenDomain: (id:string) => void; showDomain?: boolean }) {
+  if (!rows.length) return <Empty title="No opportunities in this view" text="Run a completed audit or change the active filters." />;
+  return <div className="opportunity-list">{rows.map((item) => <article className="opportunity-card" key={item.id}>
+    <div className="opportunity-score"><b>{item.priority}</b><span>priority</span></div>
+    <div className="opportunity-main">
+      <div className="finding-top"><span className="category">{item.category}</span><span className={`pill ${item.impact_status === 'measured' ? 'ok' : 'neutral'}`}>{item.impact_status}</span><span className="confidence">{Math.round(Number(item.confidence) * 100)}% confidence · {item.effort} effort</span></div>
+      <h3>{item.title}</h3>{showDomain && <button className="text-button" onClick={() => onOpenDomain(item.domain_id)}>{item.domain_name} ↗</button>}
+      <p>{item.observation}</p>
+      <details><summary>Evidence-based plan</summary><dl><dt>Why it matters</dt><dd>{item.rationale}</dd><dt>Recommended change</dt><dd>{item.recommendation}</dd><dt>Validation</dt><dd>{item.validation_plan}</dd><dt>Acceptance</dt><dd><ul>{(item.acceptance_criteria ?? []).map((value:string) => <li key={value}>{value}</li>)}</ul></dd><dt>Evidence</dt><dd>{(item.evidence_ids ?? []).map((id:string) => id.startsWith('telemetry:') ? <code className="evidence-chip" key={id}>{id}</code> : <a className="evidence-chip" key={id} href={`/api/evidence/${id}`} target="_blank" rel="noreferrer">{id}</a>)}</dd>{(item.source_urls ?? []).length > 0 && <><dt>Research / standards</dt><dd>{item.source_urls.map((url:string) => <a key={url} href={url} target="_blank" rel="noreferrer">Source ↗</a>)}</dd></>}</dl></details>
+    </div>
+    <select aria-label="Opportunity status" value={item.status} onChange={async(event) => { await patch(`/api/opportunities/${item.id}`,{status:event.target.value});onChanged(); }}>{['open','planned','testing','validated','resolved','dismissed'].map((value) => <option key={value}>{value}</option>)}</select>
+  </article>)}</div>;
+}
+
+function TrafficHub({ go }: { go: (view: View) => void }) {
+  const [domains, setDomains] = useState<Row[] | null>(null);const [domainId,setDomainId]=useState('');
+  useEffect(()=>{void api<Row[]>('/api/domains').then((rows)=>{setDomains(rows);setDomainId((current)=>current||rows[0]?.id||'')})},[]);
+  if(!domains)return <Loading/>;
+  return <><Header eyebrow="First-party measurement" title="Traffic, without the surveillance stack." subtitle="Cookieless page-load counts and field Web Vitals are collected without visitor IDs, IP storage or query strings." action={<select aria-label="Site" value={domainId} onChange={(event)=>setDomainId(event.target.value)}>{domains.map((domain)=><option key={domain.id} value={domain.id}>{domain.name}</option>)}</select>}/>{domainId?<TrafficPanel domainId={domainId}/>:<Empty title="No sites yet" text="Add a site to begin independent measurement."/>}<button className="text-button" onClick={()=>domainId&&go({name:'domain',id:domainId})}>Open site workspace →</button></>;
+}
+
+function TrafficPanel({ domainId }: { domainId: string }) {
+  const [data,setData]=useState<Row|null>(null);const [days,setDays]=useState(28);
+  const load=()=>api<Row>(`/api/domains/${domainId}/traffic?days=${days}`).then(setData);
+  useEffect(()=>{setData(null);void load()},[domainId,days]);
+  if(!data)return <Loading/>;
+  const total=(data.daily as Row[]).reduce((sum,row)=>sum+Number(row.views),0);const max=Math.max(1,...(data.daily as Row[]).map((row)=>Number(row.views)));
+  return <>
+    <div className="metric-grid"><Metric label={`Observed loads · ${days}d`} value={total} icon="trend"/><Metric label="Measured days" value={data.daily.length} icon="clock"/><Metric label="Vital samples" value={(data.vitals as Row[]).reduce((sum,row)=>sum+Number(row.samples),0)} icon="pulse"/><Metric label="Persistent identifiers" value="None" compact tone="green" icon="shield"/></div>
+    {!data.domain.telemetry_enabled&&<div className="alert warn"><b>Visitor measurement is off.</b> Synthetic audit scores remain available, but they are not real traffic.</div>}
+    <div className="two-column traffic-columns"><section className="panel"><div className="panel-head"><div><p className="eyebrow">Anonymous observations</p><h2>Page loads over time</h2></div><select value={days} onChange={(event)=>setDays(Number(event.target.value))}>{[7,28,90,365].map((value)=><option key={value} value={value}>{value} days</option>)}</select></div>{data.daily.length?<div className="bar-chart">{data.daily.map((row:Row)=><div key={row.day}><i style={{height:`${Math.max(4,Number(row.views)/max*100)}%`}}/><span>{new Date(row.day).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><b>{row.views}</b></div>)}</div>:<Empty title="No visitor observations" text="Enable and install the private measurement tag below."/>}</section>
+      <section className="panel"><p className="eyebrow">Field experience</p><h2>Web Vitals</h2>{data.vitals.length?<div className="vital-list">{data.vitals.map((vital:Row)=><div key={vital.metric}><span><b>{vital.metric}</b><small>{vital.samples} anonymous samples</small></span><strong>{formatVital(vital.metric,vital.p75)}</strong><span className={`pill ${Number(vital.poor)>0?'neutral':'ok'}`}>{vital.poor} poor</span></div>)}</div>:<Empty title="No field vital samples" text="Vitals arrive from real page loads after tag installation."/>}</section></div>
+    <div className="two-column"><section className="panel"><p className="eyebrow">Content exposure</p><h2>Most observed paths</h2>{data.pages.length?<div className="fact-list">{data.pages.slice(0,10).map((row:Row)=><Fact key={row.path} label={row.path} value={`${row.views} loads`}/>)}</div>:<Empty title="No paths yet" text="Path query strings are intentionally discarded."/>}</section><section className="panel"><p className="eyebrow">Discovery</p><h2>Referrer hosts</h2>{data.referrers.length?<div className="fact-list">{data.referrers.slice(0,10).map((row:Row)=><Fact key={row.referrer} label={row.referrer} value={`${row.views} loads`}/>)}</div>:<Empty title="No referrers yet" text="Only aggregate host names are retained."/>}</section></div>
+    <TrackerPanel domainId={domainId} data={data.domain} onChanged={load}/>
+  </>;
+}
+
+function TrackerPanel({domainId,data,onChanged}:{domainId:string;data:Row;onChanged:()=>void}){
+  const [tracker,setTracker]=useState<Row|null>(null);const [copied,setCopied]=useState(false);
+  useEffect(()=>{void api<Row>(`/api/domains/${domainId}/tracker`).then(setTracker)},[domainId,data.telemetry_enabled]);
+  return <section className="panel tracker-panel"><div className="panel-head"><div><p className="eyebrow">Private measurement tag</p><h2>Measure independently</h2><p className="section-copy">No cookies, visitor IDs, IP storage or URL query strings. The tag records page loads and field performance only.</p></div><button className={data.telemetry_enabled?'danger-button':'primary'} onClick={async()=>{await patch(`/api/domains/${domainId}/telemetry`,{enabled:!data.telemetry_enabled});onChanged()}}>{data.telemetry_enabled?'Disable tag':'Enable tag'}</button></div>{tracker&&<div className="code-copy"><code>{tracker.snippet}</code><button onClick={async()=>{await navigator.clipboard.writeText(tracker.snippet);setCopied(true);window.setTimeout(()=>setCopied(false),1500)}}>{copied?'Copied':'Copy'}</button></div>}<p className="privacy-note"><Icon name="shield"/> Install this one line before <code>&lt;/head&gt;</code>. Synthetic checks continue even without it; real page-load measurement cannot.</p></section>;
+}
+
+function AutomationHub({go}:{go:(view:View)=>void}){
+  const [rows,setRows]=useState<Row[]|null>(null);const load=()=>api<Row[]>('/api/automations').then(setRows);useEffect(()=>{void load()},[]);if(!rows)return <Loading/>;
+  return <><Header eyebrow="Automation control" title="Daily, quiet, reliable." subtitle="Lightweight daily pulse scans and deeper profiles share the same evidence-preserving queue."/><div className="metric-grid"><Metric label="Automations" value={rows.length} icon="clock"/><Metric label="Enabled" value={rows.filter(row=>row.enabled).length} tone="green" icon="check"/><Metric label="Paused" value={rows.filter(row=>!row.enabled).length} icon="pause"/><Metric label="Errors" value={rows.filter(row=>row.last_error).length} tone="red" icon="alert"/></div><section className="panel">{rows.length?rows.map(row=><div className="schedule-row" key={row.id}><span className="schedule-glyph"><Icon name="clock"/></span><span><button className="text-button" onClick={()=>go({name:'domain',id:row.domain_id})}>{row.domain_name}</button><small>{row.profile_name} · {row.cron} · next {formatDate(row.next_run_at)}</small>{row.last_error&&<small className="danger-text">{row.last_error}</small>}</span><span className={`pill ${row.enabled?'ok':'neutral'}`}>{row.enabled?'Enabled':'Paused'}</span><button onClick={async()=>{await patch(`/api/schedules/${row.id}`,{enabled:!row.enabled});load()}}>{row.enabled?'Pause':'Enable'}</button><button className="danger-button" onClick={async()=>{if(window.confirm('Delete this automation?')){await api(`/api/schedules/${row.id}`,{method:'DELETE'});load()}}}>Delete</button></div>):<Empty title="No automations" text="Add a site or create a schedule from a site workspace."/>}</section></>;
+}
+
+function AIChat({go}:{go:(view:View)=>void}){
+  const [domains,setDomains]=useState<Row[]>([]);const [domainId,setDomainId]=useState('');const [messages,setMessages]=useState<Row[]>([]);const [threadId,setThreadId]=useState('');const [value,setValue]=useState('');const [busy,setBusy]=useState(false);
+  useEffect(()=>{void api<Row[]>('/api/domains').then(setDomains)},[]);
+  const send=async(event:FormEvent)=>{event.preventDefault();const question=value.trim();if(!question||busy)return;setValue('');setMessages(current=>[...current,{id:`local-${Date.now()}`,role:'user',content:question}]);setBusy(true);try{const result=await post<Row>('/api/chat',{...(threadId?{threadId}:{}),...(domainId?{domainId}:{}),message:question});setThreadId(result.threadId);setMessages(current=>[...current,result.message])}catch(error){setMessages(current=>[...current,{id:`error-${Date.now()}`,role:'assistant',content:error instanceof Error?error.message:'Unable to answer'}])}finally{setBusy(false)}};
+  return <div className="chat-page"><Header eyebrow="Read-only AI analyst" title="Ask the evidence." subtitle="The analyst can read portfolio summaries, opportunities, audit scores and anonymous measurements. It cannot change a site or invent missing data."/><div className="chat-scope"><label>Analysis scope<select value={domainId} onChange={(event)=>{setDomainId(event.target.value);setThreadId('');setMessages([])}}><option value="">Entire portfolio</option>{domains.map(domain=><option key={domain.id} value={domain.id}>{domain.name}</option>)}</select></label>{domainId&&<button onClick={()=>go({name:'domain',id:domainId})}>Open site →</button>}</div><section className="chat-surface">{messages.length===0?<div className="chat-empty"><img src="/sitechronicle-mark.png" alt=""/><h2>What should we examine?</h2><p>Try “Which three opportunities have the strongest evidence?” or “Do we have real visitor data for this site?”</p><div>{['What changed in the latest audit?','Show the highest-confidence opportunities','Which claims are still hypotheses?'].map(prompt=><button key={prompt} onClick={()=>setValue(prompt)}>{prompt}</button>)}</div></div>:<div className="message-list">{messages.map(message=><article key={message.id} className={`message ${message.role}`}><span>{message.role==='user'?'You':'SC'}</span><div><p>{message.content}</p>{message.citations?.length>0&&<details><summary>{message.citations.length} evidence reference(s)</summary><div className="citation-list">{message.citations.map((citation:Row)=><code key={`${citation.type}-${citation.id}`}>{citation.label}</code>)}</div></details>}</div></article>)}{busy&&<article className="message assistant"><span>SC</span><div><p>Reading scoped evidence…</p></div></article>}</div>}<form className="chat-composer" onSubmit={send}><textarea aria-label="Ask SiteChronicle" rows={2} value={value} onChange={(event)=>setValue(event.target.value)} placeholder="Ask about evidence, priorities, changes or validation…"/><button className="primary" disabled={busy||!value.trim()}>Send ↑</button></form></section><p className="chat-disclaimer">AI output is advisory. Measured facts, hypotheses and unknowns remain distinct in stored records.</p></div>;
+}
+
+function SettingsPage({go}:{go:(view:View)=>void}){
+  const [domains,setDomains]=useState<Row[]|null>(null);const load=()=>api<Row[]>('/api/domains?includeArchived=true').then(setDomains);useEffect(()=>{void load()},[]);if(!domains)return <Loading/>;const archived=domains.filter(domain=>domain.archived_at);
+  return <><Header eyebrow="Workspace settings" title="Private by construction." subtitle="SiteChronicle keeps measurements on this server and exposes destructive actions explicitly."/><section className="panel"><p className="eyebrow">Data boundaries</p><h2>What the system stores</h2><div className="privacy-grid"><Fact label="Third-party analytics" value="Not required"/><Fact label="Visitor cookies" value="None"/><Fact label="IP addresses" value="Not stored"/><Fact label="URL query strings" value="Discarded"/><Fact label="Site-changing AI tools" value="Disabled"/><Fact label="Evidence artifacts" value="SHA-256 addressed"/></div></section><section className="panel"><div className="panel-head"><div><p className="eyebrow">Archive</p><h2>Removed from portfolio</h2></div></div>{archived.length?archived.map(domain=><div className="schedule-row" key={domain.id}><span className="domain-icon">{domain.name.slice(0,2).toUpperCase()}</span><span><b>{domain.name}</b><small>{domain.origin} · archived {formatDate(domain.archived_at)}</small></span><button onClick={async()=>{await post(`/api/domains/${domain.id}/restore`,{});load()}}>Restore</button><button onClick={()=>go({name:'domain',id:domain.id})}>Inspect</button></div>):<Empty title="Archive is empty" text="Archived sites can be restored without losing evidence."/>}</section></>;
+}
+
+function DomainSettings({domain,go,onChanged}:{domain:Row;go:(view:View)=>void;onChanged:()=>void}){
+  const [preview,setPreview]=useState<Row|null>(null);const [confirmation,setConfirmation]=useState('');useEffect(()=>{void api<Row>(`/api/domains/${domain.id}/deletion-preview`).then(setPreview)},[domain.id]);
+  return <><section className="panel"><p className="eyebrow">Measurement</p><h2>Privacy controls</h2><TrackerPanel domainId={domain.id} data={domain} onChanged={onChanged}/></section><section className="panel danger-zone"><p className="eyebrow">Danger zone</p><h2>Remove this site</h2><div className="danger-actions"><div><b>Archive from portfolio</b><p>Stops schedules and hides the site. Audits, evidence and measurements remain recoverable.</p></div><button className="danger-button" onClick={async()=>{if(window.confirm(`Archive ${domain.name}?`)){await post(`/api/domains/${domain.id}/archive`,{});go({name:'dashboard'})}}}>Archive site</button></div><div className="danger-actions"><div><b>Permanently delete</b><p>{preview?`${preview.audits} audits, ${preview.evidence} evidence objects, ${preview.telemetry_samples} telemetry samples and ${preview.opportunities} opportunities will be removed.`:'Loading deletion impact…'}</p><label>Type “{domain.name}” to confirm<input value={confirmation} onChange={(event)=>setConfirmation(event.target.value)}/></label></div><button className="danger-button" disabled={confirmation!==domain.name} onClick={async()=>{if(window.confirm('This cannot be undone. Permanently delete this site?')){await api(`/api/domains/${domain.id}`,{method:'DELETE'});go({name:'dashboard'})}}}>Delete permanently</button></div></section></>;
+}
+
+function formatVital(metric:string,value:number|string){const number=Number(value??0);if(metric==='CLS')return number.toFixed(3);return `${Math.round(number)} ms`}
+
 function RuleLibrary() {
   const [data, setData] = useState<Row>();
   const [query, setQuery] = useState('');
@@ -834,6 +969,10 @@ function Icon({ name }: { name: string }) {
     flag: <><path d="M5 22V4" /><path d="M5 4h11l-2 4 2 4H5" /></>, domain: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, shield: <><path d="M12 3 4 6v5c0 5 3 8 8 10 5-2 8-5 8-10V6z" /><path d="m9 12 2 2 4-5" /></>,
     sliders: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="7" cy="18" r="2" /></>,
+    spark: <><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="m18.5 15 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></>,
+    trend: <><path d="M4 17 9 12l3 3 7-8"/><path d="M14 7h5v5"/></>,
+    chat: <><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></>,
+    pause: <><path d="M9 6v12M15 6v12"/></>,
     chevron: <path d="m8 10 4 4 4-4" />,
   };
   return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? <circle cx="12" cy="12" r="8" />}</svg>;
@@ -896,6 +1035,11 @@ function parseView(): View {
   if (parts[0] === 'domains' && parts[1]) return { name: 'domain', id: parts[1] };
   if (parts[0] === 'audits' && parts[1]) return { name: 'audit', id: parts[1] };
   if (parts[0] === 'audits') return { name: 'audits' };
+  if (parts[0] === 'opportunities') return { name: 'opportunities' };
+  if (parts[0] === 'traffic') return { name: 'traffic' };
+  if (parts[0] === 'automations') return { name: 'automations' };
+  if (parts[0] === 'chat') return { name: 'chat' };
+  if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'rules') return { name: 'rules' };
   return { name: 'dashboard' };
 }

@@ -1,6 +1,7 @@
 services:
   api:
     environment:
+      NODE_ENV: development
       ALLOW_PRIVATE_TARGETS: "true"
   worker:
     environment:
@@ -11,4 +12,3 @@ services:
     volumes:
       - ./tests/fixture:/srv:ro
     networks: [audit_egress]
-

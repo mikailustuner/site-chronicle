@@ -17,6 +17,12 @@ try{
   const first=await expectJson(`/api/domains/${domainId}/audits`,{method:'POST',data:{profileId:profile.id}},202);activeAuditId=first.auditId;
   await expectJson(`/api/domains/${domainId}/audits`,{method:'POST',data:{profileId:profile.id}},409);
   const firstResult=await waitForAudit(first.auditId);activeAuditId='';validateCompletedAudit(firstResult);
+  const opportunities=await expectJson(`/api/opportunities?domainId=${domainId}&status=all`,{},200);if(!opportunities.length||opportunities.some(item=>!item.evidence_ids?.length))throw new Error('Evidence-backed opportunities were not generated');
+  await expectJson(`/api/domains/${domainId}/telemetry`,{method:'PATCH',data:{enabled:true}},200);
+  const tracker=await expectJson(`/api/domains/${domainId}/tracker`,{},200);if(!tracker.snippet.includes('tracker.js')||tracker.privacy.cookies!==false)throw new Error('Privacy-first tracker configuration is incomplete');
+  const telemetryResponse=await client.post(new URL(tracker.src).pathname.replace('/t/','/api/telemetry/collect/').replace('/tracker.js',''),{headers:{origin:'http://fixture:8080','content-type':'text/plain'},data:JSON.stringify({metric:'page_view',value:1,path:'/product',device:'desktop'})});if(telemetryResponse.status()!==202)throw new Error(`Telemetry collection failed: ${telemetryResponse.status()}`);
+  const traffic=await expectJson(`/api/domains/${domainId}/traffic?days=7`,{},200);if(!traffic.daily.some(item=>Number(item.views)>0)||traffic.privacy.persistentIdentifiers!==false)throw new Error('Anonymous traffic summary is incomplete');
+  const chat=await expectJson('/api/chat',{method:'POST',data:{domainId,message:'What should I prioritize and what is actually measured?'}},201);if(!chat.message.content||!chat.tools.includes('domain_intelligence'))throw new Error('Grounded AI fallback did not use domain tools');
 
   const evidence=firstResult.evidence[0];const evidenceResponse=await client.get(`/api/evidence/${evidence.id}`);if(!evidenceResponse.ok())throw new Error(`Evidence fetch failed: ${evidenceResponse.status()}`);const bytes=await evidenceResponse.body();const digest=createHash('sha256').update(bytes).digest('hex');if(digest!==evidence.sha256)throw new Error('Evidence response hash does not match its database digest');
   const htmlReport=await expectJson(`/api/audits/${first.auditId}/reports`,{method:'POST',data:{format:'html'}},201);await expectEvidence(htmlReport.evidenceId,'text/html');
@@ -24,6 +30,7 @@ try{
 
   const second=await expectJson(`/api/domains/${domainId}/audits`,{method:'POST',data:{profileId:profile.id}},202);activeAuditId=second.auditId;const secondResult=await waitForAudit(second.auditId);activeAuditId='';validateCompletedAudit(secondResult);
   const comparison=await expectJson('/api/comparisons',{method:'POST',data:{baselineAuditId:first.auditId,currentAuditId:second.auditId}},201);if(!comparison.comparable)throw new Error(`Identical E2E runs were not comparable: ${JSON.stringify(comparison.warnings)}`);
+  const deletion=await expectJson(`/api/domains/${domainId}/deletion-preview`,{},200);if(Number(deletion.audits)!==2||Number(deletion.evidence)<1||Number(deletion.opportunities)<1)throw new Error(`Deletion preview is incomplete: ${JSON.stringify(deletion)}`);
   await expectJson(`/api/domains/${domainId}`,{method:'DELETE'},200);domainId='';
   console.log(JSON.stringify({ok:true,firstAudit:first.auditId,secondAudit:second.auditId,pages:firstResult.pages.length,findings:firstResult.findings.length,evidence:firstResult.evidence.length,comparison:comparison.id}));
 }finally{

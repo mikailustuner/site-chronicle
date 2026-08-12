@@ -4,6 +4,8 @@ Self-hosted, evidence-based web auditing and change intelligence for a single au
 
 SiteChronicle combines repeatable browser measurements, SEO and structured-data inspection, accessibility checks, passive security posture review, behavioral-friction signals, immutable artifacts, historical comparisons and explainable cause candidates. It deliberately separates observed facts from hypotheses.
 
+It can also measure independently of GA4 or Search Console. Each property gets an optional first-party tag that records anonymous page loads, referrer host names and field Web Vitals. The tag uses no cookies or persistent visitor identifiers, stores no IP address, and discards URL query strings. Without this tag (or separately supplied server logs), SiteChronicle labels traffic as unavailable instead of presenting synthetic checks as real visitors.
+
 ## What is implemented
 
 - Single-user, self-hosted dashboard with signed `HttpOnly`, `SameSite=Strict` sessions and production CSRF origin enforcement.
@@ -16,6 +18,10 @@ SiteChronicle combines repeatable browser measurements, SEO and structured-data 
 - SHA-256 addressed HTML, header, screenshot, metric, scanner and report artifacts. A definitive finding cannot be created without evidence references.
 - Audit-to-audit score, page and finding lifecycle comparison. Cause candidates are explicitly marked `confirmed`, `likely` or `unknown`.
 - Styled A4 HTML/PDF audit and comparison reports with reproducibility manifests and evidence IDs.
+- Portfolio-wide opportunity workflow with explicit confidence, effort, evidence, validation and lifecycle state.
+- Optional cookieless first-party page-load and field Web Vital observations with a configurable retention period.
+- Read-only AI analyst grounded in scoped portfolio, opportunity, audit and telemetry tools; it remains useful in deterministic fallback mode when no AI provider is configured.
+- Recoverable property archive and explicit permanent deletion with a deletion-impact preview.
 
 Behavioral analysis reports observable interface conditions such as interruptive overlays, small targets, preselected choices, urgency wording and missing nearby trust information. It does **not** claim to read a visitor's emotions or guarantee conversion uplift.
 

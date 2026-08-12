@@ -21,11 +21,10 @@ const app = Fastify({
 
 await app.register(cookie);
 await app.register(cors, {
-  origin: (origin, callback) => {
-    if (!origin || config.nodeEnv !== 'production' || origin === new URL(config.publicBaseUrl).origin) callback(null, true);
-    else callback(new Error('Origin not allowed'), false);
-  },
-  credentials: true,
+  // The application UI is same-origin. The public telemetry beacon uses a
+  // no-CORS text/plain request and never needs credentialed CORS.
+  origin: false,
+  credentials: false,
 });
 
 app.addHook('onRequest', async (request, reply) => {
@@ -34,7 +33,8 @@ app.addHook('onRequest', async (request, reply) => {
   reply.header('referrer-policy', 'no-referrer');
   reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   reply.header('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-  if (!requireTrustedOrigin(request)) return reply.code(403).send({ error: 'untrusted_origin' });
+  const publicTelemetry=request.url.startsWith('/api/telemetry/collect/')||request.url.startsWith('/t/');
+  if (!publicTelemetry&&!requireTrustedOrigin(request)) return reply.code(403).send({ error: 'untrusted_origin' });
 });
 
 app.get('/api/health', async () => {
@@ -59,7 +59,7 @@ app.post('/api/session', async (request, reply) => {
 app.delete('/api/session', async (_request, reply) => { clearSession(reply); return { authenticated: false }; });
 
 app.addHook('preHandler', async (request, reply) => {
-  if (!request.url.startsWith('/api/') || ['/api/health','/api/readiness','/api/session'].includes(request.url.split('?')[0]!)) return;
+  if (!request.url.startsWith('/api/') || request.url.startsWith('/api/telemetry/collect/') || ['/api/health','/api/readiness','/api/session'].includes(request.url.split('?')[0]!)) return;
   await requireSession(request, reply);
 });
 

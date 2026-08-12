@@ -17,7 +17,20 @@ try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('heading', { name: 'Evidence, not guesses.' }).waitFor();
+  await page.getByRole('heading', { name: 'Every site. One clear view.' }).waitFor();
+  for (const [navigation, heading] of [
+    ['Opportunities', 'Work on what matters next.'],
+    ['Traffic & vitals', 'Traffic, without the surveillance stack.'],
+    ['AI analyst', 'Ask the evidence.'],
+    ['Automations', 'Daily, quiet, reliable.'],
+    ['Evidence rules', 'Know what the scanner knows.'],
+    ['Settings', 'Private by construction.'],
+  ]) {
+    await page.getByRole('button', { name: navigation, exact: true }).click();
+    await page.getByRole('heading', { name: heading }).waitFor();
+  }
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
+  await page.getByRole('heading', { name: 'Every site. One clear view.' }).waitFor();
   if (expectedText) await page.getByText(expectedText).first().waitFor();
   await page.screenshot({ path: process.env.SITECHRONICLE_SCREENSHOT ?? '/tmp/sitechronicle-dashboard.png', fullPage: true });
   console.log(JSON.stringify({ ok: true, title: await page.title(), url: page.url() }));

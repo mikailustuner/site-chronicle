@@ -27,6 +27,10 @@ const ConfigSchema = z.object({
   WEB_DIST_PATH: z.string().default('../../web/dist'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   CHROME_PATH: z.preprocess((value) => value === '' ? undefined : value, z.string().optional()),
+  AI_PROVIDER: z.enum(['none', 'openai-compatible', 'anthropic-compatible']).default('none'),
+  AI_API_KEY: z.string().optional(),
+  AI_BASE_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
+  AI_MODEL: z.string().optional(),
 });
 
 const parsed = ConfigSchema.parse(process.env);
@@ -58,4 +62,8 @@ export const config = {
   webDistPath: parsed.WEB_DIST_PATH,
   logLevel: parsed.LOG_LEVEL,
   chromePath: parsed.CHROME_PATH,
+  aiProvider: parsed.AI_PROVIDER,
+  aiApiKey: parsed.AI_API_KEY,
+  aiBaseUrl: parsed.AI_BASE_URL,
+  aiModel: parsed.AI_MODEL,
 };

@@ -211,6 +211,83 @@ export async function migrate(database: Database = sql): Promise<void> {
         WHERE status IN ('queued','running');
       INSERT INTO schema_migrations (version) VALUES (3) ON CONFLICT (version) DO NOTHING;
     `);
+    await transaction.unsafe(`
+      ALTER TABLE domains ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+      ALTER TABLE domains ADD COLUMN IF NOT EXISTS telemetry_key text;
+      ALTER TABLE domains ADD COLUMN IF NOT EXISTS telemetry_enabled boolean NOT NULL DEFAULT false;
+      CREATE UNIQUE INDEX IF NOT EXISTS domains_telemetry_key_idx ON domains(telemetry_key) WHERE telemetry_key IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS domains_archived_idx ON domains(archived_at, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS telemetry_samples (
+        id bigserial PRIMARY KEY,
+        domain_id text NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+        recorded_at timestamptz NOT NULL DEFAULT now(),
+        path text NOT NULL,
+        metric text NOT NULL CHECK (metric IN ('page_view','LCP','CLS','INP','FCP','TTFB')),
+        value double precision NOT NULL,
+        rating text CHECK (rating IN ('good','needs-improvement','poor')),
+        referrer_host text,
+        device text CHECK (device IN ('mobile','desktop','tablet','unknown')),
+        CHECK (length(path) <= 2048),
+        CHECK (value >= 0)
+      );
+      CREATE INDEX IF NOT EXISTS telemetry_domain_time_idx ON telemetry_samples(domain_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS telemetry_domain_metric_time_idx ON telemetry_samples(domain_id, metric, recorded_at DESC);
+
+      CREATE TABLE IF NOT EXISTS opportunities (
+        id text PRIMARY KEY,
+        domain_id text NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+        audit_id text REFERENCES audits(id) ON DELETE SET NULL,
+        fingerprint text NOT NULL,
+        category text NOT NULL,
+        title text NOT NULL,
+        observation text NOT NULL,
+        rationale text NOT NULL,
+        recommendation text NOT NULL,
+        acceptance_criteria jsonb NOT NULL DEFAULT '[]'::jsonb,
+        validation_plan text NOT NULL,
+        evidence_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+        source_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
+        confidence double precision NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        priority integer NOT NULL CHECK (priority >= 0 AND priority <= 100),
+        effort text NOT NULL DEFAULT 'medium' CHECK (effort IN ('small','medium','large')),
+        status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','planned','testing','validated','dismissed','resolved')),
+        impact_status text NOT NULL CHECK (impact_status IN ('measured','research-backed-hypothesis','site-hypothesis','informational')),
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        last_seen_at timestamptz NOT NULL DEFAULT now(),
+        resolved_at timestamptz,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE(domain_id, fingerprint)
+      );
+      CREATE INDEX IF NOT EXISTS opportunities_domain_status_priority_idx ON opportunities(domain_id, status, priority DESC);
+
+      CREATE TABLE IF NOT EXISTS chat_threads (
+        id text PRIMARY KEY,
+        domain_id text REFERENCES domains(id) ON DELETE CASCADE,
+        title text NOT NULL DEFAULT 'New conversation',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id text PRIMARY KEY,
+        thread_id text NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+        role text NOT NULL CHECK (role IN ('user','assistant')),
+        content text NOT NULL,
+        citations jsonb NOT NULL DEFAULT '[]'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS chat_messages_thread_time_idx ON chat_messages(thread_id, created_at);
+      CREATE TABLE IF NOT EXISTS chat_tool_runs (
+        id text PRIMARY KEY,
+        thread_id text NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+        tool_name text NOT NULL,
+        arguments jsonb NOT NULL DEFAULT '{}'::jsonb,
+        result jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      INSERT INTO schema_migrations (version) VALUES (4) ON CONFLICT (version) DO NOTHING;
+    `);
   });
 }
 

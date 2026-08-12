@@ -3,7 +3,7 @@ import { config } from './config.js';
 import { claimJob, completeJob, failJob, recoverStaleJobs, refreshJobLock, type Job } from './queue.js';
 import { runAudit } from './audit-runner.js';
 import { processSchedules } from './scheduler.js';
-import { cleanupRetention } from './retention.js';
+import { cleanupRetention, cleanupTelemetry } from './retention.js';
 import { getAuditProxy } from './security/proxy.js';
 
 let stopping=false;let lastSchedule=0;let lastHeartbeat=0;let lastRetention=0;let lastRecovery=Date.now();const active=new Set<Promise<void>>();
@@ -12,7 +12,7 @@ while(!stopping){
   if(Date.now()-lastHeartbeat>15_000){await heartbeat().catch(error=>console.error('Heartbeat',error));lastHeartbeat=Date.now()}
   if(Date.now()-lastRecovery>60_000){await recoverStaleJobs(sql).catch(error=>console.error('Stale job recovery',error));lastRecovery=Date.now()}
   if(Date.now()-lastSchedule>60_000){await processSchedules(sql).catch(error=>console.error('Scheduler',error));lastSchedule=Date.now()}
-  if(config.retentionDays>0&&Date.now()-lastRetention>86_400_000){await cleanupRetention(sql,config.retentionDays).catch(error=>console.error('Retention',error));lastRetention=Date.now()}
+  if(Date.now()-lastRetention>86_400_000){if(config.retentionDays>0)await cleanupRetention(sql,config.retentionDays).catch(error=>console.error('Retention',error));await cleanupTelemetry(sql,config.telemetryRetentionDays).catch(error=>console.error('Telemetry retention',error));lastRetention=Date.now()}
   while(active.size<config.concurrency){const job=await claimJob(sql,config.workerId);if(!job)break;const promise=handle(job).finally(()=>active.delete(promise));active.add(promise)}
   if(active.size===0)await sleep(config.pollIntervalMs);else await Promise.race([...active,sleep(config.pollIntervalMs)]);
 }
