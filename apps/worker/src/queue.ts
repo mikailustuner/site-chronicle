@@ -5,7 +5,8 @@ export interface Job { id: string; type: string; payload: Record<string, unknown
 export async function claimJob(database: Database, workerId: string): Promise<Job | null> {
   return database.begin(async (transaction) => {
     const rows = await transaction<Array<Record<string, unknown>>>`
-      SELECT * FROM jobs WHERE status = 'queued' AND run_after <= now()
+      SELECT * FROM jobs j WHERE status = 'queued' AND run_after <= now()
+        AND (j.domain_id IS NULL OR NOT EXISTS (SELECT 1 FROM jobs running WHERE running.status='running' AND running.domain_id=j.domain_id))
       ORDER BY priority, created_at FOR UPDATE SKIP LOCKED LIMIT 1
     `;
     const row = rows[0];

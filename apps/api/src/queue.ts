@@ -9,13 +9,25 @@ export interface Job<T = Record<string, unknown>> {
   maxAttempts: number;
 }
 
-export async function enqueue(database: Database, type: string, payload: Record<string, unknown>, priority = 100): Promise<string> {
+export async function enqueue(
+  database: Database,
+  type: string,
+  payload: Record<string, unknown>,
+  priority = 100,
+  options: { domainId?: string; connectorId?: string; dedupeKey?: string; estimatedCost?: number } = {},
+): Promise<string> {
   const id = newId('job');
-  await database`
-    INSERT INTO jobs (id, type, payload, status, priority)
-    VALUES (${id}, ${type}, ${database.json(payload as never)}, 'queued', ${priority})
+  const rows = await database<Array<{ id: string }>>`
+    INSERT INTO jobs (id, type, payload, status, priority, domain_id, connector_id, dedupe_key, estimated_cost)
+    VALUES (${id}, ${type}, ${database.json(payload as never)}, 'queued', ${priority}, ${options.domainId ?? null}, ${options.connectorId ?? null}, ${options.dedupeKey ?? null}, ${options.estimatedCost ?? 0})
+    ON CONFLICT DO NOTHING RETURNING id
   `;
-  return id;
+  if (rows[0]) return rows[0].id;
+  if (options.dedupeKey) {
+    const existing = await database<Array<{ id: string }>>`SELECT id FROM jobs WHERE dedupe_key=${options.dedupeKey} AND status IN ('queued','running') ORDER BY created_at LIMIT 1`;
+    if (existing[0]) return existing[0].id;
+  }
+  throw new Error('Unable to enqueue job');
 }
 
 export async function claimJob(database: Database, workerId: string): Promise<Job | null> {

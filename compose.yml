@@ -38,6 +38,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
+      CONNECTOR_MASTER_KEY: ${CONNECTOR_MASTER_KEY:-}
     volumes:
       - artifacts:/data/artifacts
     ports:
@@ -71,7 +72,6 @@ services:
       ALLOW_PRIVATE_TARGETS: "false"
       REQUIRE_DOMAIN_VERIFICATION: ${REQUIRE_DOMAIN_VERIFICATION:-false}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
-      TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-180}
       AUDIT_PROXY_BIND_HOST: 0.0.0.0
       AUDIT_PROXY_PORT: 43182
       AUDIT_PROXY_ADVERTISE_HOST: worker
@@ -83,6 +83,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
+      CONNECTOR_MASTER_KEY: ${CONNECTOR_MASTER_KEY:-}
     volumes:
       - artifacts:/data/artifacts
     depends_on:

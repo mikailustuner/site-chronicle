@@ -6,11 +6,7 @@ export async function cleanupRetention(database:Database,retentionDays:number):P
   const rows=await database<Array<{id:string}>>`SELECT id FROM audits WHERE status IN ('completed','failed','cancelled') AND completed_at < now() - (${retentionDays} * interval '1 day') ORDER BY completed_at LIMIT 100`;
   const store=new ArtifactStore(database);let removed=0;
   for(const row of rows){await database.begin(async transaction=>{await transaction`DELETE FROM jobs WHERE payload->>'auditId'=${row.id}`;await transaction`DELETE FROM audits WHERE id=${row.id} AND status IN ('completed','failed','cancelled')`});await store.removeAudit(row.id).catch(error=>console.error(`Retention artifact cleanup ${row.id}`,error));removed+=1}
+  await database`DELETE FROM external_artifacts WHERE observed_at < now() - (${retentionDays} * interval '1 day')`;
+  await database`DELETE FROM connector_runs WHERE started_at < now() - (${retentionDays} * interval '1 day')`;
   return removed;
-}
-
-export async function cleanupTelemetry(database:Database,retentionDays:number):Promise<number>{
-  if(!Number.isInteger(retentionDays)||retentionDays<30)throw new Error('Telemetry retention must be at least 30 days');
-  const rows=await database<Array<{id:number}>>`DELETE FROM telemetry_samples WHERE recorded_at < now() - (${retentionDays} * interval '1 day') RETURNING id`;
-  return rows.length;
 }

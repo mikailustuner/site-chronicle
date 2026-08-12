@@ -1,119 +1,90 @@
 # SiteChronicle
 
-Self-hosted, evidence-based web auditing and change intelligence for a single authorized operator.
+SiteChronicle is a private, self-hosted SEO, search-visibility, performance and web-quality intelligence workspace for one authorized operator. It monitors any number of sites using outbound requests and public/licensed data—without customer GA4/GSC access, a site tag, an inbound webhook or a public home-server port.
 
-SiteChronicle combines repeatable browser measurements, SEO and structured-data inspection, accessibility checks, passive security posture review, behavioral-friction signals, immutable artifacts, historical comparisons and explainable cause candidates. It deliberately separates observed facts from hypotheses.
+Observed facts, provider observations, hypotheses and unavailable metrics are deliberately separated. A contextual SERP sample is never presented as a universal Google rank; a before/after association is never presented as Google causality; missing public data is never converted to zero.
 
-It can also measure independently of GA4 or Search Console. Each property gets an optional first-party tag that records anonymous page loads, referrer host names and field Web Vitals. The tag uses no cookies or persistent visitor identifiers, stores no IP address, and discards URL query strings. Without this tag (or separately supplied server logs), SiteChronicle labels traffic as unavailable instead of presenting synthetic checks as real visitors.
+## Implemented capabilities
 
-## What is implemented
+- Multi-site portfolio with archive, restore, deletion-impact preview and confirmed permanent deletion.
+- Market-aware search projects: country, language, location and mobile/desktop context are stored for every site.
+- Candidate keyword discovery from the latest authorized crawl, manual approval, tracking tiers and explicit business priority.
+- Licensed Google-result observation through workspace-owned DataForSEO or SerpApi credentials. Direct Google HTML scraping is disabled.
+- Context-preserving SERP history, target rank, features, top competitors and movement against the preceding comparable sample.
+- SERP competitor discovery, manual approval, robots-aware public-page snapshots and evidence-supported gap candidates.
+- Page-feature index covering title/headings, deterministic topic terms, surface entities, schema types, word count, internal inlinks and crawl depth.
+- Tag-free public performance: CrUX History when public coverage exists, synthetic availability from the home-server vantage, and existing Lighthouse lab measurements shown as separate sources.
+- Common Crawl index observations labeled as sampled and incomplete—not a backlink graph or a complete index.
+- Deterministic technical SEO, accessibility, performance, structured-data, security posture, behavioral-friction and agent-readiness audits.
+- Immutable SHA-256 audit and connector artifacts, timestamps, source context and an evidence archive.
+- Explainable opportunities with confidence, counterevidence, acceptance criteria, validation plan and lifecycle state.
+- Change log and bounded rank experiments with baseline/evaluation windows, minimum-sample checks and explicit confounders.
+- Read-only AI analyst grounded in portfolio, audit, opportunity, keyword, SERP, public-performance and experiment data. It has no site-changing tools.
+- Daily/periodic automations sharing a domain-fair queue, deduplication, retry handling, budget gates and connector circuit breakers.
+- Minimal private dashboard with encrypted connector management and no customer-measurement UI.
 
-- Single-user, self-hosted dashboard with signed `HttpOnly`, `SameSite=Strict` sessions and production CSRF origin enforcement.
-- Authorized-domain registry, optional DNS/well-known ownership verification, reusable scan profiles and timezone-aware cron schedules.
-- Rate-limited crawl discovery from links, robots.txt and sitemap files, with normalized URL inventory and page-template classification.
-- Mobile/desktop Chromium evidence, screenshots, normalized DOM, console/network failures, axe accessibility results and behavioral-friction observations.
-- Multi-run Lighthouse performance/SEO/accessibility/best-practices scores, lab metrics and resource inventory; optional CrUX field data when an API key is configured.
-- Deterministic SEO, structured-data, metadata, image, agent-readiness and cross-page commerce-fact consistency rules.
-- Passive response-header, cookie and TLS inspection; optional authenticated internal ZAP passive baseline. Unsupported form submission and active-attack profiles are rejected.
-- SHA-256 addressed HTML, header, screenshot, metric, scanner and report artifacts. A definitive finding cannot be created without evidence references.
-- Audit-to-audit score, page and finding lifecycle comparison. Cause candidates are explicitly marked `confirmed`, `likely` or `unknown`.
-- Styled A4 HTML/PDF audit and comparison reports with reproducibility manifests and evidence IDs.
-- Portfolio-wide opportunity workflow with explicit confidence, effort, evidence, validation and lifecycle state.
-- Optional cookieless first-party page-load and field Web Vital observations with a configurable retention period.
-- Read-only AI analyst grounded in scoped portfolio, opportunity, audit and telemetry tools; it remains useful in deterministic fallback mode when no AI provider is configured.
-- Recoverable property archive and explicit permanent deletion with a deletion-impact preview.
+Traffic, clicks, conversions and revenue cannot be measured objectively under the no-customer-data/no-tag boundary. SiteChronicle reports those fields as unavailable and optimizes observable leading indicators: technical eligibility, contextual visibility, content/intent differences, public performance and controlled change outcomes.
 
-Behavioral analysis reports observable interface conditions such as interruptive overlays, small targets, preselected choices, urgency wording and missing nearby trust information. It does **not** claim to read a visitor's emotions or guarantee conversion uplift.
+## Evidence and safety rules
 
-## Safety defaults
-
-- Passive, read-only navigation only.
-- Forms and checkout mutations are disabled.
-- Active security scanning is disabled.
-- Private networks and cloud metadata targets are blocked.
-- Every finding must reference stored evidence.
-- Behavioral findings describe observable risk signals, not user emotions or guaranteed conversion impact.
+- Public targets are limited to HTTP(S); private, loopback, link-local, metadata and unsafe redirect targets are blocked.
+- Crawling is read-only, rate-limited and robots-aware. Forms, checkout mutations and active attacks are disabled.
+- SERP provider URLs, CrUX and Common Crawl endpoints are fixed in code; credentials are AES-256-GCM encrypted and never returned to the browser.
+- Every recommendation exposes its observation, rationale, confidence, evidence references, counterevidence and validation method.
+- Lighthouse is lab data; CrUX is aggregated public field data; home-server uptime is synthetic. They are never merged into a fake “traffic” metric.
+- Behavioral findings describe observable interface conditions, not emotions or guaranteed conversion uplift.
 
 ## Local development
 
-Requirements: Node.js, Bun, Docker, Docker Compose and a Chromium compatible with Playwright.
+Requirements: Bun, Docker/Compose and a Playwright-compatible Chromium.
 
-1. Copy `.env.example` to `.env` and replace the secrets.
+1. Copy `.env.example` to `.env` and replace every secret.
 2. Start PostgreSQL: `docker compose up -d postgres`.
 3. Run migrations: `bun run migrate`.
-4. Build the dashboard: `bun run build:web`.
+4. Build: `bun run build`.
 5. Start the API: `bun run dev`.
-6. Start the worker in a second terminal: `bun run dev:worker`.
+6. Start the worker separately: `bun run dev:worker`.
 
-The API defaults to `http://127.0.0.1:43180`; Vite development UI defaults to `http://127.0.0.1:43181`.
+The API defaults to `http://127.0.0.1:43180`; the Vite UI defaults to `http://127.0.0.1:43181`.
 
-Run the deterministic checks with `bun run typecheck && bun run test`. With a local instance running, the browser login/dashboard smoke test is available through:
+Validation commands:
 
 ```sh
+bun run typecheck
+bun test
+bun run build
 SITECHRONICLE_TEST_PASSWORD='<admin password>' bun run test:ui-smoke
 ```
 
-The isolated full-stack fixture test uses `compose.e2e.yml`; it temporarily enables private targets only for the fixture services, exercises two complete audits and deletes its test domain afterward.
+## Home-server production
 
-## Production
-
-Create a `.env` with at least:
+Required configuration:
 
 ```dotenv
 POSTGRES_PASSWORD=<long-random-value>
 ADMIN_PASSWORD=<long-random-value>
 SESSION_SECRET=<at-least-32-random-bytes>
-PUBLIC_BASE_URL=https://audit.example.com
-SITECHRONICLE_HOST=audit.example.com
-```
-
-Then run:
-
-```sh
-docker compose up -d --build
-```
-
-Open `https://<SITECHRONICLE_HOST>`, sign in, add an origin you are authorized to inspect, select a scan profile and run the first baseline. Use **Compare runs** only after a second completed audit. Keep profiles identical when the delta will drive a decision; the comparison engine displays a warning if the toolchain or profile changed.
-
-### LAN or Tailscale access on port 43180
-
-For a private homeserver without a public TLS hostname, set the server's private IPv4 explicitly:
-
-```dotenv
+CONNECTOR_MASTER_KEY=<at-least-32-random-bytes-used-only-for-connector-encryption>
 PUBLIC_BASE_URL=http://192.168.1.50:43180
 TRUST_PRIVATE_HTTP=true
 SITECHRONICLE_BIND_IP=0.0.0.0
 SITECHRONICLE_PORT=43180
 ```
 
-Then run `docker compose up -d --build` and open the configured URL. Production accepts this HTTP exception only for RFC1918 or Tailscale IPv4 addresses; the session and CSRF origin remain pinned to `PUBLIC_BASE_URL`. Reserve the server address in DHCP, or update `PUBLIC_BASE_URL` and recreate `api` if it changes. Use HTTPS when access is possible outside the trusted LAN/tailnet.
+Run `docker compose up -d --build` and open the configured LAN/Tailscale URL. No inbound internet exposure is required: the API is for the private operator interface, while the worker initiates outbound HTTPS requests.
 
-To enable the optional passive ZAP service, set `ZAP_API_KEY`, set `ZAP_API_URL=http://zap:8080`, then start with `docker compose --profile security up -d`. SiteChronicle sends only explicit GET requests to already-crawled pages; the ZAP spider and active scanner are never invoked. In Compose, ZAP has no direct egress and reaches targets only through the worker's SSRF-filtered audit proxy.
+In **Settings**, configure one licensed SERP provider (DataForSEO or SerpApi), optionally CrUX, and optionally keyless Common Crawl. Set provider budgets before enabling frequent schedules. Real provider credentials are required for live rank collection; test fixtures do not prove an external subscription.
 
-The worker has outbound audit access but no published port, no Docker socket, no Linux capabilities and only the artifact volume. PostgreSQL and API stay on the internal backend network. ZAP is isolated on a separate control network without direct egress; only Caddy is connected to the public edge network.
+The worker has no published port, Docker socket or Linux capabilities. PostgreSQL stays on the internal network. Optional ZAP passive inspection remains internal and GET-only through the filtered audit proxy.
 
-Set `RETENTION_DAYS` to a positive number to remove completed, failed and cancelled audits after that many days. Set it to `0` to retain them indefinitely. The dashboard reports worker heartbeat state, while `/api/readiness` returns 503 until both the database and a worker are available.
+Set `RETENTION_DAYS=0` to retain evidence indefinitely or a positive number to compact old completed audits, connector runs and external artifacts. Back up with `deploy/backup.sh /absolute/backup/path`; rehearse restores on another machine before relying on them.
 
-## Audit interpretation
+## Interpretation vocabulary
 
-- **Measured:** the value or defect was directly captured in this run.
-- **Research-backed hypothesis:** the interface condition is observed, while its user or revenue effect remains a hypothesis supported by the cited standard or research.
-- **Site hypothesis:** a plausible local impact that needs analytics or an experiment.
-- **Confirmed cause:** before/after artifacts directly establish the relevant implementation change.
-- **Likely/unknown cause:** evidence is partial or insufficient. SiteChronicle does not manufacture certainty.
+- **Measured:** directly captured by the stated scanner/source in the recorded context.
+- **Public provider observation:** externally supplied, timestamped and context-bound.
+- **Research-backed hypothesis:** observed condition with a cited standard or primary reference; local effect remains unproven.
+- **Site hypothesis:** plausible local effect requiring a recorded change and repeated measurement.
+- **Unavailable / no public data:** not measured; never equivalent to zero or healthy.
 
-Lighthouse is controlled lab data, not field-user Core Web Vitals. CrUX is shown separately when available. Automated accessibility results do not replace keyboard, screen-reader and checkout testing by people.
-
-## Comparison integrity
-
-Audits preserve the scan profile, tool versions, runtime, timestamps and artifact hashes. Comparisons warn when profiles or scanner versions differ. Cause candidates are labeled `confirmed`, `likely` or `unknown`; the engine is required to say unknown when artifacts do not establish a reliable cause.
-
-## Backups
-
-Run `deploy/backup.sh /absolute/backup/path`. The script exports PostgreSQL, artifacts and SHA-256 checksums. Restore only after rehearsal on a separate server:
-
-```sh
-CONFIRM_RESTORE=yes deploy/restore.sh /absolute/backup/path YYYYMMDDTHHMMSSZ
-```
-
-The restore verifies checksums and archive paths before stopping API/worker services, replacing the database and merging the content-addressed artifact archive.
+See [OUTBOUND-ONLY-SEO-INTELLIGENCE-PLAN.md](./OUTBOUND-ONLY-SEO-INTELLIGENCE-PLAN.md) for architecture, phase coverage and operational limits.

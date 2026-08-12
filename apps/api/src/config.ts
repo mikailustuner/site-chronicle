@@ -31,6 +31,7 @@ const ConfigSchema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
   AI_MODEL: z.string().optional(),
+  CONNECTOR_MASTER_KEY: z.string().min(32).optional(),
 });
 
 const parsed = ConfigSchema.parse(process.env);
@@ -66,4 +67,5 @@ export const config = {
   aiApiKey: parsed.AI_API_KEY,
   aiBaseUrl: parsed.AI_BASE_URL,
   aiModel: parsed.AI_MODEL,
+  connectorMasterKey: parsed.CONNECTOR_MASTER_KEY,
 };

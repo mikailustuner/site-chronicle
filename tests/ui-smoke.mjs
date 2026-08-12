@@ -19,10 +19,16 @@ try {
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByRole('heading', { name: 'Every site. One clear view.' }).waitFor();
   for (const [navigation, heading] of [
+    ['Search visibility', 'Search visibility, with its context intact.'],
+    ['Keywords', 'Discover, approve, then spend deliberately.'],
+    ['Competitors', 'Compare what was actually observed.'],
     ['Opportunities', 'Work on what matters next.'],
-    ['Traffic & vitals', 'Traffic, without the surveillance stack.'],
+    ['Technical health', 'Technical health across the portfolio.'],
+    ['Public performance', 'Field, lab and uptime—never mixed.'],
+    ['Changes & experiments', 'Changes and experiments.'],
     ['AI analyst', 'Ask the evidence.'],
-    ['Automations', 'Daily, quiet, reliable.'],
+    ['Automations', 'Daily, quiet, outbound-only.'],
+    ['Evidence archive', 'Evidence archive.'],
     ['Evidence rules', 'Know what the scanner knows.'],
     ['Settings', 'Private by construction.'],
   ]) {

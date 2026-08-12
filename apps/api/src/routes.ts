@@ -8,28 +8,14 @@ import { ArtifactStore } from './artifacts.js';
 import { buildAuditReport, buildComparisonReport } from './report.js';
 import { CronExpressionParser } from 'cron-parser';
 import { answerChat } from './chat.js';
-import { collectTelemetry, trackerScript } from './telemetry.js';
 
 export async function registerRoutes(app: FastifyInstance, database: Database): Promise<void> {
-  app.get('/t/:key/tracker.js', async (request, reply) => {
-    const {key}=z.object({key:z.string().regex(/^[a-f0-9]{32}$/)}).parse(request.params);
-    const endpoint=new URL(`/api/telemetry/collect/${key}`,config.publicBaseUrl).toString();
-    return reply.header('cache-control','public,max-age=3600').header('cross-origin-resource-policy','cross-origin').type('application/javascript; charset=utf-8').send(trackerScript(endpoint));
-  });
-
-  app.post('/api/telemetry/collect/:key', async (request, reply) => {
-    const {key}=z.object({key:z.string().regex(/^[a-f0-9]{32}$/)}).parse(request.params);
-    const result=await collectTelemetry({database,key,body:request.body,...(request.headers.origin?{requestOrigin:request.headers.origin}:{})}).catch(()=> 'not_found' as const);
-    if(result==='accepted')return reply.code(202).send();
-    if(result==='rate_limited')return reply.code(429).send();
-    return reply.code(404).send();
-  });
-
   app.get('/api/dashboard', async () => {
     const domains = await database<Array<Record<string, unknown>>>`
       SELECT d.*,
         COALESCE((SELECT count(*)::int FROM opportunities o WHERE o.domain_id=d.id AND o.status IN ('open','planned','testing')),0) AS open_opportunities,
-        COALESCE((SELECT count(*)::int FROM telemetry_samples t WHERE t.domain_id=d.id AND t.metric='page_view' AND t.recorded_at >= now() - interval '28 days'),0) AS observed_views_28d,
+        COALESCE((SELECT count(*)::int FROM keywords k JOIN search_projects sp ON sp.id=k.search_project_id WHERE sp.domain_id=d.id AND k.status='approved'),0) AS tracked_keywords,
+        (SELECT max(sr.observed_at) FROM serp_runs sr JOIN keywords k ON k.id=sr.keyword_id JOIN search_projects sp ON sp.id=k.search_project_id WHERE sp.domain_id=d.id AND sr.status IN ('success','partial')) AS latest_serp_at,
         (SELECT a.status FROM audits a WHERE a.domain_id=d.id ORDER BY a.created_at DESC LIMIT 1) AS latest_status,
         (SELECT a.scores FROM audits a WHERE a.domain_id=d.id AND a.status='completed' ORDER BY a.completed_at DESC LIMIT 1) AS latest_scores,
         (SELECT a.completed_at FROM audits a WHERE a.domain_id=d.id AND a.status='completed' ORDER BY a.completed_at DESC LIMIT 1) AS latest_completed_at
@@ -49,17 +35,17 @@ export async function registerRoutes(app: FastifyInstance, database: Database): 
   });
 
   app.post('/api/domains', async (request, reply) => {
-    const body = z.object({ name: z.string().min(1).max(120), origin: z.string().min(1), authorizationConfirmed: z.literal(true), dailyMonitoring:z.boolean().default(true), telemetryEnabled:z.boolean().default(false) }).parse(request.body);
+    const body = z.object({ name: z.string().min(1).max(120), origin: z.string().min(1), authorizationConfirmed: z.literal(true), dailyMonitoring:z.boolean().default(true), country:z.string().min(2).max(2).default('TR'), language:z.string().min(2).max(10).default('tr'), location:z.string().min(2).max(200).default('Turkey'), device:z.enum(['mobile','desktop']).default('mobile'), businessPriority:z.number().int().min(0).max(5).default(3) }).parse(request.body);
     const target = await validateTarget(body.origin).catch((error: unknown) => {
       throw Object.assign(new Error(error instanceof Error ? error.message : 'Invalid audit target'), { statusCode: 400 });
     });
     const origin = target.url.origin;
     const id = newId('domain');
     const token = `sitechronicle-verification=${crypto.randomUUID()}`;
-    const telemetryKey=crypto.randomUUID().replaceAll('-','');
     const rows = await database.begin(async transaction=>{const inserted=await transaction<Array<Record<string,unknown>>>`
-      INSERT INTO domains (id, name, origin, hostname, verification_token, authorization_confirmed,telemetry_key,telemetry_enabled)
-      VALUES (${id}, ${body.name}, ${origin}, ${target.url.hostname}, ${token}, true,${telemetryKey},${body.telemetryEnabled}) RETURNING *`;
+      INSERT INTO domains (id, name, origin, hostname, verification_token, authorization_confirmed,default_country,default_language,default_location,default_device,business_priority)
+      VALUES (${id}, ${body.name}, ${origin}, ${target.url.hostname}, ${token}, true,${body.country.toUpperCase()},${body.language},${body.location},${body.device},${body.businessPriority}) RETURNING *`;
+      await transaction`INSERT INTO search_projects(id,domain_id,country,language,location,devices) VALUES(${newId('search')},${id},${body.country.toUpperCase()},${body.language},${body.location},${transaction.json([body.device] as never)})`;
       const pulseId=newId('profile');const pulse=ScanProfileSchema.parse({name:'Daily pulse',maxUrls:80,maxBrowserPages:3,performanceRuns:1,devices:['mobile'],states:['fresh-session'],includeSecurityBaseline:false,includeCrux:true});
       const deep=ScanProfileSchema.parse({name:'Deep audit'});
       await transaction`INSERT INTO scan_profiles (id,domain_id,name,config,is_default) VALUES (${pulseId},${id},'Daily pulse',${transaction.json(pulse)},true),(${newId('profile')},${id},'Deep audit',${transaction.json(deep)},false)`;
@@ -204,30 +190,6 @@ export async function registerRoutes(app: FastifyInstance, database: Database): 
     return database`SELECT id,status,scores,summary,manifest,started_at,completed_at,created_at FROM audits WHERE domain_id=${id} AND status='completed' ORDER BY created_at`;
   });
 
-  app.get('/api/domains/:id/traffic', async (request, reply) => {
-    const {id}=z.object({id:z.string()}).parse(request.params);
-    const {days}=z.object({days:z.coerce.number().int().min(1).max(365).default(28)}).parse(request.query);
-    const domains=await database<Array<Record<string,unknown>>>`SELECT id,name,origin,telemetry_enabled,telemetry_key FROM domains WHERE id=${id}`;
-    if(!domains[0])return reply.code(404).send({error:'domain_not_found'});
-    const [daily,vitals,pages,referrers]=await Promise.all([
-      database`SELECT date_trunc('day',recorded_at) AS day,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY 1 ORDER BY 1`,
-      database`SELECT metric,count(*)::int AS samples,avg(value)::double precision AS average,percentile_disc(.75) WITHIN GROUP (ORDER BY value) AS p75,count(*) FILTER(WHERE rating='good')::int AS good,count(*) FILTER(WHERE rating='needs-improvement')::int AS needs_improvement,count(*) FILTER(WHERE rating='poor')::int AS poor FROM telemetry_samples WHERE domain_id=${id} AND metric<>'page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY metric ORDER BY metric`,
-      database`SELECT path,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY path ORDER BY views DESC LIMIT 30`,
-      database`SELECT COALESCE(referrer_host,'Direct / unknown') AS referrer,count(*)::int AS views FROM telemetry_samples WHERE domain_id=${id} AND metric='page_view' AND recorded_at >= now()-(${days}*interval '1 day') GROUP BY referrer_host ORDER BY views DESC LIMIT 20`,
-    ]);
-    return {domain:domains[0],days,daily,vitals,pages,referrers,privacy:{cookies:false,persistentIdentifiers:false,ipStored:false,queryStringsStored:false,label:'Anonymous first-party page observations'}};
-  });
-
-  app.patch('/api/domains/:id/telemetry', async (request, reply) => {
-    const {id}=z.object({id:z.string()}).parse(request.params);const {enabled}=z.object({enabled:z.boolean()}).parse(request.body);
-    const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET telemetry_enabled=${enabled},telemetry_key=COALESCE(telemetry_key,${crypto.randomUUID().replaceAll('-','')}),updated_at=now() WHERE id=${id} RETURNING *`;
-    if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0];
-  });
-
-  app.get('/api/domains/:id/tracker',async(request,reply)=>{
-    const {id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`SELECT id,origin,telemetry_key,telemetry_enabled FROM domains WHERE id=${id}`;const domain=rows[0];if(!domain)return reply.code(404).send({error:'domain_not_found'});const src=new URL(`/t/${domain.telemetry_key}/tracker.js`,config.publicBaseUrl).toString();return{enabled:domain.telemetry_enabled,src,snippet:`<script defer src="${src}"></script>`,privacy:{cookies:false,ipStored:false,persistentIdentifiers:false,queryStringsStored:false}}
-  });
-
   app.get('/api/opportunities',async(request)=>{
     const query=z.object({domainId:z.string().optional(),status:z.enum(['open','planned','testing','validated','dismissed','resolved','all']).default('open'),limit:z.coerce.number().int().min(1).max(500).default(200)}).parse(request.query);
     return database`SELECT o.*,d.name AS domain_name,d.origin FROM opportunities o JOIN domains d ON d.id=o.domain_id WHERE d.archived_at IS NULL AND (${query.domainId??null}::text IS NULL OR o.domain_id=${query.domainId??null}) AND (${query.status}='all' OR o.status=${query.status}) ORDER BY o.priority DESC,o.updated_at DESC LIMIT ${query.limit}`;
@@ -242,7 +204,7 @@ export async function registerRoutes(app: FastifyInstance, database: Database): 
 
   app.post('/api/domains/:id/archive',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const active=await database<Array<{count:number}>>`SELECT count(*)::int AS count FROM audits WHERE domain_id=${id} AND status IN ('queued','running')`;if(Number(active[0]?.count??0)>0)return reply.code(409).send({error:'domain_has_active_audits'});const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET archived_at=now(),updated_at=now() WHERE id=${id} AND archived_at IS NULL RETURNING *`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});await database`UPDATE schedules SET enabled=false,updated_at=now() WHERE domain_id=${id}`;return rows[0]});
   app.post('/api/domains/:id/restore',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`UPDATE domains SET archived_at=null,updated_at=now() WHERE id=${id} RETURNING *`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0]});
-  app.get('/api/domains/:id/deletion-preview',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`SELECT d.id,d.name,d.origin,(SELECT count(*)::int FROM audits WHERE domain_id=d.id) AS audits,(SELECT count(*)::int FROM evidence e JOIN audits a ON a.id=e.audit_id WHERE a.domain_id=d.id) AS evidence,(SELECT count(*)::int FROM telemetry_samples WHERE domain_id=d.id) AS telemetry_samples,(SELECT count(*)::int FROM opportunities WHERE domain_id=d.id) AS opportunities FROM domains d WHERE d.id=${id}`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0]});
+  app.get('/api/domains/:id/deletion-preview',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const rows=await database<Array<Record<string,unknown>>>`SELECT d.id,d.name,d.origin,(SELECT count(*)::int FROM audits WHERE domain_id=d.id) AS audits,(SELECT count(*)::int FROM evidence e JOIN audits a ON a.id=e.audit_id WHERE a.domain_id=d.id) AS evidence,(SELECT count(*)::int FROM external_artifacts WHERE domain_id=d.id) AS external_evidence,(SELECT count(*)::int FROM keywords k JOIN search_projects sp ON sp.id=k.search_project_id WHERE sp.domain_id=d.id) AS keywords,(SELECT count(*)::int FROM opportunities WHERE domain_id=d.id) AS opportunities FROM domains d WHERE d.id=${id}`;if(!rows[0])return reply.code(404).send({error:'domain_not_found'});return rows[0]});
 
   app.get('/api/chat/threads',async()=>database`SELECT t.*,d.name AS domain_name,(SELECT content FROM chat_messages WHERE thread_id=t.id ORDER BY created_at DESC LIMIT 1) AS last_message FROM chat_threads t LEFT JOIN domains d ON d.id=t.domain_id ORDER BY t.updated_at DESC LIMIT 100`);
   app.get('/api/chat/threads/:id',async(request,reply)=>{const{id}=z.object({id:z.string()}).parse(request.params);const threads=await database<Array<Record<string,unknown>>>`SELECT * FROM chat_threads WHERE id=${id}`;if(!threads[0])return reply.code(404).send({error:'thread_not_found'});const messages=await database`SELECT * FROM chat_messages WHERE thread_id=${id} ORDER BY created_at`;return{thread:threads[0],messages}});

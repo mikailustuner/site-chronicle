@@ -9,6 +9,7 @@ import { config } from './config.js';
 import { migrate, sql } from './db.js';
 import { clearLoginAttempts, clearSession, consumeLoginAttempt, hasValidSession, issueSession, requireSession, requireTrustedOrigin, verifyPassword } from './security/session.js';
 import { registerRoutes } from './routes.js';
+import { registerIntelligenceRoutes } from './intelligence-routes.js';
 
 const app = Fastify({
   logger: config.nodeEnv === 'development'
@@ -21,8 +22,7 @@ const app = Fastify({
 
 await app.register(cookie);
 await app.register(cors, {
-  // The application UI is same-origin. The public telemetry beacon uses a
-  // no-CORS text/plain request and never needs credentialed CORS.
+  // The private application UI is same-origin; no public collector is exposed.
   origin: false,
   credentials: false,
 });
@@ -33,8 +33,7 @@ app.addHook('onRequest', async (request, reply) => {
   reply.header('referrer-policy', 'no-referrer');
   reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   reply.header('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-  const publicTelemetry=request.url.startsWith('/api/telemetry/collect/')||request.url.startsWith('/t/');
-  if (!publicTelemetry&&!requireTrustedOrigin(request)) return reply.code(403).send({ error: 'untrusted_origin' });
+  if (!requireTrustedOrigin(request)) return reply.code(403).send({ error: 'untrusted_origin' });
 });
 
 app.get('/api/health', async () => {
@@ -59,11 +58,15 @@ app.post('/api/session', async (request, reply) => {
 app.delete('/api/session', async (_request, reply) => { clearSession(reply); return { authenticated: false }; });
 
 app.addHook('preHandler', async (request, reply) => {
-  if (!request.url.startsWith('/api/') || request.url.startsWith('/api/telemetry/collect/') || ['/api/health','/api/readiness','/api/session'].includes(request.url.split('?')[0]!)) return;
+  if (!request.url.startsWith('/api/') || ['/api/health','/api/readiness','/api/session'].includes(request.url.split('?')[0]!)) return;
   await requireSession(request, reply);
 });
 
 await registerRoutes(app, sql);
+await registerIntelligenceRoutes(app, sql);
+
+// Legacy public collection paths are deliberately closed in outbound-only mode.
+app.all('/t/*', async (_request, reply) => reply.code(404).send({ error: 'public_collector_disabled' }));
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(currentDir, config.webDistPath);

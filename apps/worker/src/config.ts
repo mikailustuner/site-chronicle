@@ -15,7 +15,6 @@ const Schema = z.object({
   ALLOW_PRIVATE_TARGETS: bool,
   REQUIRE_DOMAIN_VERIFICATION: bool,
   RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
-  TELEMETRY_RETENTION_DAYS: z.coerce.number().int().min(30).max(730).default(180),
   AUDIT_PROXY_BIND_HOST: z.enum(['127.0.0.1', '0.0.0.0']).default('127.0.0.1'),
   AUDIT_PROXY_PORT: z.coerce.number().int().min(0).max(65535).default(0),
   AUDIT_PROXY_ADVERTISE_HOST: z.string().min(1).default('127.0.0.1'),
@@ -26,6 +25,7 @@ const Schema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: optionalUrl,
   AI_MODEL: z.string().optional(),
+  CONNECTOR_MASTER_KEY: z.string().min(32).optional(),
 });
 
 const value = Schema.parse(process.env);
@@ -39,7 +39,6 @@ export const config = {
   allowPrivateTargets: value.ALLOW_PRIVATE_TARGETS,
   requireDomainVerification: value.REQUIRE_DOMAIN_VERIFICATION,
   retentionDays: value.RETENTION_DAYS,
-  telemetryRetentionDays: value.TELEMETRY_RETENTION_DAYS,
   auditProxyBindHost: value.AUDIT_PROXY_BIND_HOST,
   auditProxyPort: value.AUDIT_PROXY_PORT,
   auditProxyAdvertiseHost: value.AUDIT_PROXY_ADVERTISE_HOST,
@@ -50,4 +49,5 @@ export const config = {
   aiApiKey: value.AI_API_KEY,
   aiBaseUrl: value.AI_BASE_URL,
   aiModel: value.AI_MODEL,
+  connectorMasterKey: value.CONNECTOR_MASTER_KEY,
 };
