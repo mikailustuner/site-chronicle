@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const booleanFromEnv = z.string().optional().transform((value) => value === 'true');
+const optionalSecret = (minimum = 1) => z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().min(minimum).optional(),
+);
 
 function isPrivateNetworkHostname(hostname: string): boolean {
   const octets = hostname.split('.').map(Number);
@@ -28,10 +32,13 @@ const ConfigSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   CHROME_PATH: z.preprocess((value) => value === '' ? undefined : value, z.string().optional()),
   AI_PROVIDER: z.enum(['none', 'openai-compatible', 'anthropic-compatible']).default('none'),
-  AI_API_KEY: z.string().optional(),
+  AI_API_KEY: optionalSecret(),
   AI_BASE_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
   AI_MODEL: z.string().optional(),
-  CONNECTOR_MASTER_KEY: z.string().min(32).optional(),
+  // Compose deliberately passes an empty string when this optional feature is
+  // not configured. Treat that as absent so the core application can start;
+  // saving encrypted connector credentials will still return a clear 503.
+  CONNECTOR_MASTER_KEY: optionalSecret(32),
 });
 
 const parsed = ConfigSchema.parse(process.env);

@@ -5,6 +5,10 @@ const optionalUrl = z.preprocess(
   (value) => value === '' ? undefined : value,
   z.string().url().optional(),
 );
+const optionalSecret = (minimum = 1) => z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().min(minimum).optional(),
+);
 const Schema = z.object({
   DATABASE_URL: z.string().default('postgres://sitechronicle:sitechronicle@127.0.0.1:54329/sitechronicle'),
   ARTIFACTS_PATH: z.string().default('./data/artifacts'),
@@ -22,10 +26,10 @@ const Schema = z.object({
   ZAP_API_KEY: z.string().optional(),
   CRUX_API_KEY: z.string().optional(),
   AI_PROVIDER: z.enum(['none', 'openai-compatible', 'anthropic-compatible']).default('none'),
-  AI_API_KEY: z.string().optional(),
+  AI_API_KEY: optionalSecret(),
   AI_BASE_URL: optionalUrl,
   AI_MODEL: z.string().optional(),
-  CONNECTOR_MASTER_KEY: z.string().min(32).optional(),
+  CONNECTOR_MASTER_KEY: optionalSecret(32),
 });
 
 const value = Schema.parse(process.env);
