@@ -646,6 +646,84 @@ export async function migrate(database: Database = sql): Promise<void> {
 
       INSERT INTO schema_migrations (version) VALUES (5) ON CONFLICT (version) DO NOTHING;
     `);
+    await transaction.unsafe(`
+      CREATE TABLE IF NOT EXISTS solution_cases (
+        id text PRIMARY KEY,
+        domain_id text REFERENCES domains(id) ON DELETE CASCADE,
+        title text NOT NULL,
+        area text NOT NULL CHECK (area IN ('growth','advertising','software','security','automation','product','operations','research','other')),
+        objective text NOT NULL,
+        context text NOT NULL DEFAULT '',
+        constraints jsonb NOT NULL DEFAULT '[]'::jsonb,
+        assumptions jsonb NOT NULL DEFAULT '[]'::jsonb,
+        evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        status text NOT NULL DEFAULT 'discovery' CHECK (status IN ('discovery','planned','active','waiting','validated','closed')),
+        priority integer NOT NULL DEFAULT 3 CHECK (priority BETWEEN 0 AND 5),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS solution_cases_status_priority_idx ON solution_cases(status,priority DESC,updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS solution_actions (
+        id text PRIMARY KEY,
+        case_id text NOT NULL REFERENCES solution_cases(id) ON DELETE CASCADE,
+        phase integer NOT NULL DEFAULT 1,
+        title text NOT NULL,
+        rationale text NOT NULL,
+        instructions jsonb NOT NULL DEFAULT '[]'::jsonb,
+        acceptance_criteria jsonb NOT NULL DEFAULT '[]'::jsonb,
+        evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','doing','blocked','done','dismissed')),
+        result text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS solution_actions_case_phase_idx ON solution_actions(case_id,phase,status);
+
+      CREATE TABLE IF NOT EXISTS strategy_plans (
+        id text PRIMARY KEY,
+        case_id text REFERENCES solution_cases(id) ON DELETE CASCADE,
+        domain_id text REFERENCES domains(id) ON DELETE CASCADE,
+        plan_type text NOT NULL CHECK (plan_type IN ('site-360','google-ads','meta-ads','growth','software','security','automation','custom')),
+        title text NOT NULL,
+        version integer NOT NULL DEFAULT 1,
+        status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','ready','active','validated','archived')),
+        brief jsonb NOT NULL DEFAULT '{}'::jsonb,
+        recommendations jsonb NOT NULL DEFAULT '[]'::jsonb,
+        experiments jsonb NOT NULL DEFAULT '[]'::jsonb,
+        risks jsonb NOT NULL DEFAULT '[]'::jsonb,
+        measurement_boundary text NOT NULL,
+        evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        source_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS strategy_plans_domain_time_idx ON strategy_plans(domain_id,updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ad_blueprints (
+        id text PRIMARY KEY,
+        domain_id text NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+        case_id text REFERENCES solution_cases(id) ON DELETE SET NULL,
+        channel text NOT NULL CHECK (channel IN ('google-ads','meta-ads')),
+        goal text NOT NULL CHECK (goal IN ('sales','leads','traffic','awareness')),
+        offer text NOT NULL,
+        audience text NOT NULL,
+        geography text NOT NULL,
+        daily_budget numeric(14,2) NOT NULL CHECK (daily_budget > 0),
+        currency text NOT NULL,
+        destination_url text,
+        access_level text NOT NULL DEFAULT 'none' CHECK (access_level IN ('none','platform-read','platform-manage')),
+        status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','ready','launched-externally','learning','validated','stopped')),
+        blueprint jsonb NOT NULL,
+        evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        source_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS ad_blueprints_domain_time_idx ON ad_blueprints(domain_id,updated_at DESC);
+
+      INSERT INTO schema_migrations (version) VALUES (6) ON CONFLICT (version) DO NOTHING;
+    `);
   });
 }
 

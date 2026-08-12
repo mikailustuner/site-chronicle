@@ -22,6 +22,9 @@ Observed facts, provider observations, hypotheses and unavailable metrics are de
 - Read-only AI analyst grounded in portfolio, audit, opportunity, keyword, SERP, public-performance and experiment data. It has no site-changing tools.
 - Daily/periodic automations sharing a domain-fair queue, deduplication, retry handling, budget gates and connector circuit breakers.
 - Minimal private dashboard with encrypted connector management and no customer-measurement UI.
+- 360° improvement workspace combining technical eligibility, search demand, offer/conversion readiness, performance/accessibility, trust/security and paid-acquisition readiness without collapsing them into one misleading score.
+- Google Ads and Meta Ads strategy studio that turns a verified offer, audience, geography, budget and landing page into a channel-specific campaign structure, creative/keyword plan, guardrails and experiment design.
+- General Solution Desk for software, security, automation, growth, advertising, product, operations and research work, with field-specific evidence playbooks, acceptance criteria and action lifecycle.
 
 Traffic, clicks, conversions and revenue cannot be measured objectively under the no-customer-data/no-tag boundary. SiteChronicle reports those fields as unavailable and optimizes observable leading indicators: technical eligibility, contextual visibility, content/intent differences, public performance and controlled change outcomes.
 
@@ -88,3 +91,4 @@ Set `RETENTION_DAYS=0` to retain evidence indefinitely or a positive number to c
 - **Unavailable / no public data:** not measured; never equivalent to zero or healthy.
 
 See [OUTBOUND-ONLY-SEO-INTELLIGENCE-PLAN.md](./OUTBOUND-ONLY-SEO-INTELLIGENCE-PLAN.md) for architecture, phase coverage and operational limits.
+See [MULTIDISCIPLINARY-OPERATING-SYSTEM.md](./MULTIDISCIPLINARY-OPERATING-SYSTEM.md) for the right-hand operating model, ad-planning rules and general problem-solving workflow.

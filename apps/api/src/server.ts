@@ -10,6 +10,7 @@ import { migrate, sql } from './db.js';
 import { clearLoginAttempts, clearSession, consumeLoginAttempt, hasValidSession, issueSession, requireSession, requireTrustedOrigin, verifyPassword } from './security/session.js';
 import { registerRoutes } from './routes.js';
 import { registerIntelligenceRoutes } from './intelligence-routes.js';
+import { registerStrategyRoutes } from './strategy-routes.js';
 
 const app = Fastify({
   logger: config.nodeEnv === 'development'
@@ -64,6 +65,7 @@ app.addHook('preHandler', async (request, reply) => {
 
 await registerRoutes(app, sql);
 await registerIntelligenceRoutes(app, sql);
+await registerStrategyRoutes(app, sql);
 
 // Legacy public collection paths are deliberately closed in outbound-only mode.
 app.all('/t/*', async (_request, reply) => reply.code(404).send({ error: 'public_collector_disabled' }));

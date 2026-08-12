@@ -17,6 +17,7 @@
 | Faz 6 | Tamamlandı | Kanıtlı fırsat motoru, değişiklik günlüğü, bounded deney oluşturma/değerlendirme ve belirsizlik kaydı. |
 | Faz 7 | Tamamlandı | Salt-okunur AI analist; SERP, gap, public metric ve deney bağlamı; kaynaksız trafik iddiası yok. |
 | Faz 8 | Tamamlandı | Çoklu site otomasyonları, fair scheduling, connector health/status, retention, evidence archive ve browser smoke testi. |
+| Faz 9 | Tamamlandı | 360° improvement, erişimsiz Google/Meta reklam blueprint'leri ve çok disiplinli Solution Desk. |
 
 Doğrulama sonucu: TypeScript typecheck, 27 deterministik test, production build, tekrar çalıştırılabilir PostgreSQL migration ve 12 ana arayüz rotasını gezen Playwright smoke testi geçti. Eski public tracker yolu 404 verdi; worker health/readiness görüldü. Gerçek Google sırası için operatörün kendi lisanslı DataForSEO veya SerpApi hesabını bağlaması gerekir; sahte test anahtarıyla canlı sağlayıcı başarısı iddia edilmez.
 
@@ -486,6 +487,14 @@ AI:
 **İşler:** Fair scheduling, site başına concurrency, incremental crawl, storage retention/compaction, PostgreSQL partition/indeksleri, maliyet ve queue dashboard'u, backup/restore provası, connector health, alarm merkezi, stale-data işaretleri ve browser evidence regression suite.
 
 **Kabul kriterleri:** Büyük bir site diğerlerini aç bırakmaz; yeniden başlatma veri/para çoğaltmaz; restore sonrası kanıt hash'leri doğrulanır; dashboard her veri kaynağının son başarılı zamanını ve tazeliğini gösterir.
+
+### Faz 9 — Çok disiplinli işletim sistemi ve reklam stüdyosu
+
+**Amaç:** SiteChronicle'ı yalnızca SEO/audit aracından çıkarıp web büyümesi, reklam, yazılım, güvenlik, otomasyon, ürün, araştırma ve operasyon problemlerini yürüten özel bir çalışma sistemine dönüştürmek.
+
+**İşler:** Altı sütunlu 360° site görünümü; gerçek offer/audience/geography/budget girdili Google Ads ve Meta Ads blueprint üretimi; conversion access gate; resmî platform kaynakları; destination-domain kontrolü; kreatif/keyword/landing-page/experiment planı; genel Solution Case ve alan playbook'ları; action lifecycle; AI'a read-only strategy/case context.
+
+**Kabul kriterleri:** Hesap erişimi olmadan CPA/ROAS/satış iddiası üretilmez; dönüşüm sinyali isteyen optimizasyonlar blokajlı/koşullu gösterilir; Meta retargeting yetkili sinyal olmadan kapalıdır; reklam destination'ı yalnızca yetkili domaine ait olabilir; her vaka kabul kriterli aksiyon üretir; yazılım ve güvenlik playbook'ları kapsam/rollback/retest sınırlarını korur.
 
 ## 12. Önerilen teslim sırası
 
