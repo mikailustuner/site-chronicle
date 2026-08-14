@@ -13,11 +13,21 @@ const ResponseSchema = z.object({
 
 const systemPrompt = 'You are an evidence reviewer. Return JSON {notes:[{findingId,clarification,evidenceIds,confidence}]}. Do not create findings, claim causality, or cite evidence IDs not provided.';
 
+const severityRank: Record<Finding['severity'], number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
 export async function enrichWithAi(findings: Finding[]): Promise<Record<string, { clarification: string; confidence: number; evidenceIds:string[] }> | null> {
   if (config.aiProvider === 'none' || !config.aiApiKey || !config.aiBaseUrl || !config.aiModel) return null;
 
   const byId = new Map(findings.map((item) => [item.id, item]));
-  const payload = findings.slice(0, 100).map((item) => ({
+  // Keep the request within the response schema's 50-note ceiling and spend
+  // the model's context on the findings that need attention first.
+  const payload = findings.toSorted((left, right) => severityRank[left.severity] - severityRank[right.severity]).slice(0, 50).map((item) => ({
     id: item.id,
     title: item.title,
     observation: item.observation,
@@ -55,7 +65,7 @@ export async function enrichWithAi(findings: Finding[]): Promise<Record<string, 
             { role: 'user', content: JSON.stringify(payload) },
           ],
         }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(config.aiTimeoutMs),
   });
   if (!response.ok) throw new Error(`AI provider ${response.status}`);
 

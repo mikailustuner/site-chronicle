@@ -29,6 +29,7 @@ const Schema = z.object({
   AI_API_KEY: optionalSecret(),
   AI_BASE_URL: optionalUrl,
   AI_MODEL: z.string().optional(),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(180_000),
   CONNECTOR_MASTER_KEY: optionalSecret(32),
 });
 
@@ -53,5 +54,6 @@ export const config = {
   aiApiKey: value.AI_API_KEY,
   aiBaseUrl: value.AI_BASE_URL,
   aiModel: value.AI_MODEL,
+  aiTimeoutMs: value.AI_TIMEOUT_MS,
   connectorMasterKey: value.CONNECTOR_MASTER_KEY,
 };
